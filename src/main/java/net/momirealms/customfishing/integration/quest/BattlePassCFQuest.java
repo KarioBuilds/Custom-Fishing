@@ -18,7 +18,8 @@
 package net.momirealms.customfishing.integration.quest;
 
 import io.github.battlepass.BattlePlugin;
-import io.github.battlepass.quests.quests.external.executor.ExternalQuestExecutor;
+import io.github.battlepass.api.events.server.PluginReloadEvent;
+import io.github.battlepass.quests.service.base.ExternalQuestContainer;
 import io.github.battlepass.registry.quest.QuestRegistry;
 import net.momirealms.customfishing.api.event.FishResultEvent;
 import net.momirealms.customfishing.fishing.FishResult;
@@ -26,22 +27,41 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 
-public class BattlePassCFQuest extends ExternalQuestExecutor implements Listener {
+public class BattlePassCFQuest implements Listener {
 
     public static void register() {
         QuestRegistry questRegistry = BattlePlugin.getApi().getQuestRegistry();
-        questRegistry.hook("customfishing", BattlePassCFQuest::new);
+        questRegistry.hook("customfishing", FishQuest::new);
     }
 
-    public BattlePassCFQuest(BattlePlugin battlePlugin) {
-        super(battlePlugin, "customfishing");
+    @EventHandler(ignoreCancelled = true)
+    public void onBattlePassReload(PluginReloadEvent event) {
+        register();
     }
 
-    @EventHandler
-    public void onFishCaught(FishResultEvent event) {
-        if (event.isCancelled()) return;
-        if (event.getResult() == FishResult.FAILURE) return;
-        Player player = event.getPlayer();
-        this.execute("fish", player, (var1x) -> var1x.root(event.getLootID()));
+    private static class FishQuest extends ExternalQuestContainer {
+
+        public FishQuest(BattlePlugin battlePlugin) {
+            super(battlePlugin, "customfishing");
+        }
+
+        @EventHandler
+        public void onFishCaught(FishResultEvent event) {
+            if (event.isCancelled() || event.getResult() == FishResult.FAILURE)
+                return;
+            Player player = event.getPlayer();
+            if (event.getLootID() != null)
+                this.executionBuilder("fish")
+                        .player(player)
+                        .root(event.getLootID())
+                        .progress(event.isDouble() ? 2 : 1)
+                        .buildAndExecute();
+            if (event.getLoot() != null && event.getLoot().getGroup() != null)
+                this.executionBuilder("group")
+                        .player(player)
+                        .root(event.getLoot().getGroup())
+                        .progress(event.isDouble() ? 2 : 1)
+                        .buildAndExecute();
+        }
     }
 }
