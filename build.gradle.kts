@@ -77,7 +77,7 @@ subprojects {
         }
         java {
             withSourcesJar()
-            withJavadocJar()
+//            withJavadocJar() // Dreeam - disable generating Javadoc to prevent build failed
         }
     }
 }
