@@ -17,7 +17,11 @@
 
 package net.momirealms.customfishing.api.data;
 
+import net.momirealms.customfishing.api.data.user.OfflineUser;
+
+import java.util.Collection;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -28,7 +32,15 @@ public interface DataStorageInterface {
 
     StorageType getStorageType();
 
-    CompletableFuture<Optional<PlayerData>> getPlayerData(UUID uuid, boolean force);
+    CompletableFuture<Optional<PlayerData>> getPlayerData(UUID uuid, boolean lock);
 
-    CompletableFuture<Boolean> setPlayData(UUID uuid, PlayerData playerData, boolean unlock);
+    CompletableFuture<Boolean> updatePlayerData(UUID uuid, PlayerData playerData, boolean unlock);
+
+    CompletableFuture<Boolean> updateOrInsertPlayerData(UUID uuid, PlayerData playerData, boolean unlock);
+
+    void updateManyPlayersData(Collection<? extends OfflineUser> users, boolean unlock);
+
+    void lockOrUnlockPlayerData(UUID uuid, boolean lock);
+
+    Set<UUID> getUniqueUsers(boolean legacy);
 }

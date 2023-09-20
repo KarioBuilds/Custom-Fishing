@@ -33,7 +33,7 @@ public abstract class CustomFishingPlugin extends JavaPlugin {
     protected LootManager lootManager;
     protected FishingManager fishingManager;
     protected EffectManager effectManager;
-    protected MobManager mobManager;
+    protected EntityManager entityManager;
     protected BlockManager blockManager;
     protected AdventureManager adventure;
     protected BagManager bagManager;
@@ -43,6 +43,9 @@ public abstract class CustomFishingPlugin extends JavaPlugin {
     protected CompetitionManager competitionManager;
     protected StorageManager storageManager;
     protected PlaceholderManager placeholderManager;
+    protected StatisticsManager statisticsManager;
+    protected TotemManager totemManager;
+    protected HookManager hookManager;
 
     private static CustomFishingPlugin instance;
 
@@ -86,8 +89,8 @@ public abstract class CustomFishingPlugin extends JavaPlugin {
         return blockManager;
     }
 
-    public MobManager getMobManager() {
-        return mobManager;
+    public EntityManager getEntityManager() {
+        return entityManager;
     }
 
     public ItemManager getItemManager() {
@@ -122,8 +125,20 @@ public abstract class CustomFishingPlugin extends JavaPlugin {
         return storageManager;
     }
 
+    public TotemManager getTotemManager() {
+        return totemManager;
+    }
+
+    public HookManager getHookManager() {
+        return hookManager;
+    }
+
     public IntegrationManager getIntegrationManager() {
         return integrationManager;
+    }
+
+    public StatisticsManager getStatisticsManager() {
+        return statisticsManager;
     }
 
     public PlaceholderManager getPlaceholderManager() {
@@ -139,4 +154,6 @@ public abstract class CustomFishingPlugin extends JavaPlugin {
     public CompetitionManager getCompetitionManager() {
         return competitionManager;
     }
+
+    public abstract void debug(String message);
 }

@@ -20,8 +20,9 @@ package net.momirealms.customfishing.storage.method.database.sql;
 import net.momirealms.customfishing.api.CustomFishingPlugin;
 import net.momirealms.customfishing.api.data.PlayerData;
 import net.momirealms.customfishing.api.data.StorageType;
+import net.momirealms.customfishing.api.data.user.OfflineUser;
 import net.momirealms.customfishing.api.util.LogUtils;
-import net.momirealms.customfishing.setting.Config;
+import net.momirealms.customfishing.setting.CFConfig;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.sqlite.SQLiteConfig;
@@ -29,10 +30,14 @@ import org.sqlite.SQLiteConfig;
 import java.io.File;
 import java.io.IOException;
 import java.sql.*;
+import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * An implementation of AbstractSQLDatabase that uses the SQLite database for player data storage.
+ */
 public class SQLiteImpl extends AbstractSQLDatabase {
 
     private Connection connection;
@@ -42,6 +47,9 @@ public class SQLiteImpl extends AbstractSQLDatabase {
         super(plugin);
     }
 
+    /**
+     * Initialize the SQLite database and connection based on the configuration.
+     */
     @Override
     public void initialize() {
         YamlConfiguration config = plugin.getConfig("database.yml");
@@ -50,6 +58,9 @@ public class SQLiteImpl extends AbstractSQLDatabase {
         super.createTableIfNotExist();
     }
 
+    /**
+     * Disable the SQLite database by closing the connection.
+     */
     @Override
     public void disable() {
         try {
@@ -65,6 +76,12 @@ public class SQLiteImpl extends AbstractSQLDatabase {
         return StorageType.SQLite;
     }
 
+    /**
+     * Get a connection to the SQLite database.
+     *
+     * @return A database connection.
+     * @throws SQLException If there is an error establishing a connection.
+     */
     @Override
     public Connection getConnection() throws SQLException {
         if (connection == null || connection.isClosed()) {
@@ -73,8 +90,16 @@ public class SQLiteImpl extends AbstractSQLDatabase {
         return connection;
     }
 
+    /**
+     * Asynchronously retrieve player data from the SQLite database.
+     *
+     * @param uuid The UUID of the player.
+     * @param lock Flag indicating whether to lock the data.
+     * @return A CompletableFuture with an optional PlayerData.
+     */
+    @SuppressWarnings("DuplicatedCode")
     @Override
-    public CompletableFuture<Optional<PlayerData>> getPlayerData(UUID uuid, boolean force) {
+    public CompletableFuture<Optional<PlayerData>> getPlayerData(UUID uuid, boolean lock) {
         var future = new CompletableFuture<Optional<PlayerData>>();
         plugin.getScheduler().runTaskAsync(() -> {
         try (
@@ -84,22 +109,21 @@ public class SQLiteImpl extends AbstractSQLDatabase {
             statement.setString(1, uuid.toString());
             ResultSet rs = statement.executeQuery();
             if (rs.next()) {
-                int lock = rs.getInt(2);
-                if (!force && (lock != 0 && getCurrentSeconds() - Config.dataSaveInterval <= lock)) {
-                    statement.close();
-                    rs.close();
+                int lockValue = rs.getInt(2);
+                if (lockValue != 0 && getCurrentSeconds() - CFConfig.dataSaveInterval <= lockValue) {
                     connection.close();
-                    future.complete(Optional.empty());
+                    future.complete(Optional.of(PlayerData.LOCKED));
                     return;
                 }
                 final byte[] dataByteArray = rs.getBytes("data");
+                if (lock) lockOrUnlockPlayerData(uuid, true);
                 future.complete(Optional.of(plugin.getStorageManager().fromBytes(dataByteArray)));
             } else if (Bukkit.getPlayer(uuid) != null) {
                 var data = PlayerData.empty();
-                insertPlayerData(uuid, data);
+                insertPlayerData(uuid, data, lock);
                 future.complete(Optional.of(data));
             } else {
-                future.complete(Optional.of(PlayerData.NEVER_PLAYED));
+                future.complete(Optional.empty());
             }
         } catch (SQLException e) {
             LogUtils.warn("Failed to get " + uuid + "'s data.", e);
@@ -109,8 +133,16 @@ public class SQLiteImpl extends AbstractSQLDatabase {
         return future;
     }
 
+    /**
+     * Asynchronously update player data in the SQLite database.
+     *
+     * @param uuid       The UUID of the player.
+     * @param playerData The player's data to update.
+     * @param unlock     Flag indicating whether to unlock the data.
+     * @return A CompletableFuture indicating the update result.
+     */
     @Override
-    public CompletableFuture<Boolean> setPlayData(UUID uuid, PlayerData playerData, boolean unlock) {
+    public CompletableFuture<Boolean> updatePlayerData(UUID uuid, PlayerData playerData, boolean unlock) {
         var future = new CompletableFuture<Boolean>();
         plugin.getScheduler().runTaskAsync(() -> {
         try (
@@ -130,14 +162,50 @@ public class SQLiteImpl extends AbstractSQLDatabase {
         return future;
     }
 
+    /**
+     * Asynchronously update data for multiple players in the SQLite database.
+     *
+     * @param users  A collection of OfflineUser instances to update.
+     * @param unlock Flag indicating whether to unlock the data.
+     */
     @Override
-    public void insertPlayerData(UUID uuid, PlayerData playerData) {
+    public void updateManyPlayersData(Collection<? extends OfflineUser> users, boolean unlock) {
+        String sql = String.format(SqlConstants.SQL_UPDATE_BY_UUID, getTableName("data"));
+        try (Connection connection = getConnection()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                for (OfflineUser user : users) {
+                    statement.setInt(1, unlock ? 0 : getCurrentSeconds());
+                    statement.setBytes(2, plugin.getStorageManager().toBytes(user.getPlayerData()));
+                    statement.setString(3, user.getUUID().toString());
+                    statement.addBatch();
+                }
+                statement.executeBatch();
+                connection.commit();
+            } catch (SQLException e) {
+                connection.rollback();
+                LogUtils.warn("Failed to update bag data for online players", e);
+            }
+        } catch (SQLException e) {
+            LogUtils.warn("Failed to get connection when saving online players' data", e);
+        }
+    }
+
+    /**
+     * Insert player data into the SQLite database.
+     *
+     * @param uuid       The UUID of the player.
+     * @param playerData The player's data to insert.
+     * @param lock       Flag indicating whether to lock the data.
+     */
+    @Override
+    public void insertPlayerData(UUID uuid, PlayerData playerData, boolean lock) {
         try (
             Connection connection = getConnection();
             PreparedStatement statement = connection.prepareStatement(String.format(SqlConstants.SQL_INSERT_DATA_BY_UUID, getTableName("data")))
         ) {
             statement.setString(1, uuid.toString());
-            statement.setInt(2, getCurrentSeconds());
+            statement.setInt(2, lock ? getCurrentSeconds() : 0);
             statement.setBytes(3, plugin.getStorageManager().toBytes(playerData));
             statement.execute();
         } catch (SQLException e) {
@@ -145,6 +213,10 @@ public class SQLiteImpl extends AbstractSQLDatabase {
         }
     }
 
+    /**
+     * Set up the connection to the SQLite database.
+     */
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     private void setConnection() {
         try {
             if (!databaseFile.exists()) databaseFile.createNewFile();

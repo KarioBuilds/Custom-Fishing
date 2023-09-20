@@ -19,18 +19,23 @@ package net.momirealms.customfishing.storage.method.database.sql;
 
 import com.zaxxer.hikari.HikariDataSource;
 import net.momirealms.customfishing.api.CustomFishingPlugin;
-import net.momirealms.customfishing.api.data.StorageType;
+import net.momirealms.customfishing.api.data.*;
 import net.momirealms.customfishing.api.util.LogUtils;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
-public abstract class AbstractHikariDatabase extends AbstractSQLDatabase {
+/**
+ * An abstract base class for SQL databases using the HikariCP connection pool, which handles player data storage.
+ */
+public abstract class AbstractHikariDatabase extends AbstractSQLDatabase implements LegacyDataStorageInterface {
 
     private HikariDataSource dataSource;
     private final String driverClass;
@@ -56,6 +61,9 @@ public abstract class AbstractHikariDatabase extends AbstractSQLDatabase {
         }
     }
 
+    /**
+     * Initialize the database connection pool and create tables if they don't exist.
+     */
     @Override
     public void initialize() {
         YamlConfiguration config = plugin.getConfig("database.yml");
@@ -107,14 +115,81 @@ public abstract class AbstractHikariDatabase extends AbstractSQLDatabase {
         super.createTableIfNotExist();
     }
 
+    /**
+     * Disable the database by closing the connection pool.
+     */
     @Override
     public void disable() {
         if (dataSource != null && !dataSource.isClosed())
             dataSource.close();
     }
 
+    /**
+     * Get a connection to the SQL database from the connection pool.
+     *
+     * @return A database connection.
+     * @throws SQLException If there is an error establishing a connection.
+     */
     @Override
     public Connection getConnection() throws SQLException {
         return dataSource.getConnection();
+    }
+
+    /**
+     * Retrieve legacy player data from the SQL database.
+     *
+     * @param uuid The UUID of the player.
+     * @return A CompletableFuture containing the optional legacy player data.
+     */
+    @Override
+    public CompletableFuture<Optional<PlayerData>> getLegacyPlayerData(UUID uuid) {
+        var future = new CompletableFuture<Optional<PlayerData>>();
+        plugin.getScheduler().runTaskAsync(() -> {
+            try (
+                Connection connection = getConnection()
+            ) {
+                var builder = new PlayerData.Builder().setName("");
+                PreparedStatement statementOne = connection.prepareStatement(String.format(SqlConstants.SQL_SELECT_BY_UUID, getTableName("fishingbag")));
+                statementOne.setString(1, uuid.toString());
+                ResultSet rsOne = statementOne.executeQuery();
+                if (rsOne.next()) {
+                    int size = rsOne.getInt("size");
+                    String contents = rsOne.getString("contents");
+                    builder.setBagData(new InventoryData(contents, size));
+                } else {
+                    builder.setBagData(InventoryData.empty());
+                }
+
+                PreparedStatement statementTwo = connection.prepareStatement(String.format(SqlConstants.SQL_SELECT_BY_UUID, getTableName("selldata")));
+                statementTwo.setString(1, uuid.toString());
+                ResultSet rsTwo = statementTwo.executeQuery();
+                if (rsTwo.next()) {
+                    int date = rsTwo.getInt("date");
+                    double money = rsTwo.getInt("money");
+                    builder.setEarningData(new EarningData(money, date));
+                } else {
+                    builder.setEarningData(EarningData.empty());
+                }
+
+                PreparedStatement statementThree = connection.prepareStatement(String.format(SqlConstants.SQL_SELECT_BY_UUID, getTableName("statistics")));
+                statementThree.setString(1, uuid.toString());
+                ResultSet rsThree = statementThree.executeQuery();
+                if (rsThree.next()) {
+                    String stats = rsThree.getString("stats");
+                    var amountMap = (Map<String, Integer>) Arrays.stream(stats.split(";"))
+                            .map(element -> element.split(":"))
+                            .filter(pair -> pair.length == 2)
+                            .collect(Collectors.toMap(pair -> pair[0], pair -> Integer.parseInt(pair[1])));
+                    builder.setStats(new StatisticData(amountMap));
+                } else {
+                    builder.setStats(StatisticData.empty());
+                }
+                future.complete(Optional.of(builder.build()));
+            } catch (SQLException e) {
+                LogUtils.warn("Failed to get " + uuid + "'s data.", e);
+                future.completeExceptionally(e);
+            }
+        });
+        return future;
     }
 }

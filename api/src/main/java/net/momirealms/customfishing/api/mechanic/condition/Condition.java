@@ -27,30 +27,19 @@ import java.util.Map;
 
 public class Condition {
 
-    @Nullable
-    protected final Location location;
-    @Nullable
+    protected Location location;
     protected final Player player;
-    @NotNull
-    protected final Map<String, String> args;
+    protected final @NotNull Map<String, String> args;
 
-    public Condition() {
-        this(null, null, new HashMap<>());
-    }
-
-    public Condition(HashMap<String, String> args) {
-        this(null, null, args);
-    }
-
-    public Condition(Player player) {
+    public Condition(@NotNull Player player) {
         this(player.getLocation(), player, new HashMap<>());
     }
 
-    public Condition(Player player, Map<String, String> args) {
+    public Condition(@NotNull Player player, @NotNull Map<String, String> args) {
         this(player.getLocation(), player, args);
     }
 
-    public Condition(@Nullable Location location, @Nullable Player player, @NotNull Map<String, String> args) {
+    public Condition(Location location, Player player, @NotNull Map<String, String> args) {
         this.location = location;
         this.player = player;
         this.args = args;
@@ -64,12 +53,18 @@ public class Condition {
         }
     }
 
-    @Nullable
+    public void setLocation(@NotNull Location location) {
+        this.location = location;
+        this.args.put("{x}", String.valueOf(location.getX()));
+        this.args.put("{y}", String.valueOf(location.getY()));
+        this.args.put("{z}", String.valueOf(location.getZ()));
+        this.args.put("{world}", location.getWorld().getName());
+    }
+
     public Location getLocation() {
         return location;
     }
 
-    @Nullable
     public Player getPlayer() {
         return player;
     }
@@ -86,5 +81,9 @@ public class Condition {
 
     public void insertArg(String key, String value) {
         args.put(key, value);
+    }
+
+    public String delArg(String key) {
+        return args.remove(key);
     }
 }

@@ -17,30 +17,57 @@
 
 package net.momirealms.customfishing.api.manager;
 
-import net.momirealms.customfishing.api.mechanic.game.Game;
-import net.momirealms.customfishing.api.mechanic.game.GameConfig;
-import org.bukkit.configuration.ConfigurationSection;
+import net.momirealms.customfishing.api.common.Pair;
+import net.momirealms.customfishing.api.mechanic.condition.Condition;
+import net.momirealms.customfishing.api.mechanic.game.BasicGameConfig;
+import net.momirealms.customfishing.api.mechanic.game.GameFactory;
+import net.momirealms.customfishing.api.mechanic.game.GameInstance;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.HashMap;
+import java.util.Optional;
 
 public interface GameManager {
 
+    /**
+     * Registers a new game type with the specified type identifier.
+     *
+     * @param type         The type identifier for the game.
+     * @param gameFactory  The {@link GameFactory} that creates instances of the game.
+     * @return {@code true} if the registration was successful, {@code false} if the type identifier is already registered.
+     */
+    boolean registerGameType(String type, GameFactory gameFactory);
 
-    boolean registerGameType(String type, GameCreator gameCreator);
-
+    /**
+     * Unregisters a game type with the specified type identifier.
+     *
+     * @param type The type identifier of the game to unregister.
+     * @return {@code true} if the game type was successfully unregistered, {@code false} if the type identifier was not found.
+     */
     boolean unregisterGameType(String type);
 
-    @Nullable GameCreator getGameCreator(String type);
+    /**
+     * Retrieves the game factory associated with the specified game type.
+     *
+     * @param type The type identifier of the game.
+     * @return The {@code GameFactory} for the specified game type, or {@code null} if not found.
+     */
+    @Nullable GameFactory getGameFactory(String type);
 
-    @Nullable Game getGame(String key);
+    /**
+     * Retrieves a game instance and its basic configuration associated with the specified key.
+     *
+     * @param key The key identifying the game instance.
+     * @return An {@code Optional} containing a {@code Pair} of the basic game configuration and the game instance
+     *         if found, or an empty {@code Optional} if not found.
+     */
+    @Nullable Pair<BasicGameConfig, GameInstance> getGameInstance(String key);
 
-    @Nullable GameConfig getGameConfig(String key);
-
-    Game getRandomGame();
-
-    GameConfig getRandomGameConfig();
-
-    public interface GameCreator {
-
-        Game setArgs(ConfigurationSection section);
-    }
+    /**
+     * Retrieves a map of game names and their associated weights based on the specified conditions.
+     *
+     * @param condition The condition to evaluate game weights.
+     * @return A {@code HashMap} containing game names as keys and their associated weights as values.
+     */
+    HashMap<String, Double> getGameWithWeight(Condition condition);
 }

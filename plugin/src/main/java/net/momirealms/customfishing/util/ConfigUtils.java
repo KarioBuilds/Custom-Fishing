@@ -18,8 +18,11 @@
 package net.momirealms.customfishing.util;
 
 import net.momirealms.customfishing.api.common.Pair;
-import net.momirealms.customfishing.api.mechanic.loot.Modifier;
+import net.momirealms.customfishing.api.mechanic.loot.WeightModifier;
 import net.momirealms.customfishing.api.util.LogUtils;
+import net.momirealms.customfishing.compatibility.papi.PlaceholderManagerImpl;
+import net.objecthunter.exp4j.Expression;
+import net.objecthunter.exp4j.ExpressionBuilder;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
@@ -28,8 +31,17 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
+/**
+ * Utility class for configuration-related operations.
+ */
 public class ConfigUtils {
 
+    /**
+     * Converts an object into an ArrayList of strings.
+     *
+     * @param object The input object
+     * @return An ArrayList of strings
+     */
     @SuppressWarnings("unchecked")
     public static ArrayList<String> stringListArgs(Object object) {
         ArrayList<String> list = new ArrayList<>();
@@ -37,15 +49,29 @@ public class ConfigUtils {
             list.add(member);
         } else if (object instanceof List<?> members) {
             list.addAll((Collection<? extends String>) members);
+        } else if (object instanceof String[] strings) {
+            list.addAll(List.of(strings));
         }
         return list;
     }
 
+    /**
+     * Splits a string into a pair of integers using the "~" delimiter.
+     *
+     * @param value The input string
+     * @return A Pair of integers
+     */
     public static Pair<Integer, Integer> splitStringIntegerArgs(String value) {
         String[] split = value.split("~");
         return Pair.of(Integer.parseInt(split[0]), Integer.parseInt(split[1]));
     }
 
+    /**
+     * Converts a list of strings in the format "key:value" into a list of Pairs with keys and doubles.
+     *
+     * @param list The input list of strings
+     * @return A list of Pairs containing keys and doubles
+     */
     public static List<Pair<String, Double>> getWeights(List<String> list) {
         List<Pair<String, Double>> result = new ArrayList<>(list.size());
         for (String member : list) {
@@ -56,6 +82,12 @@ public class ConfigUtils {
         return result;
     }
 
+    /**
+     * Converts an object into a double value.
+     *
+     * @param arg The input object
+     * @return A double value
+     */
     public static double getDoubleValue(Object arg) {
         if (arg instanceof Double d) {
             return d;
@@ -65,8 +97,14 @@ public class ConfigUtils {
         return 0;
     }
 
-    public static List<Pair<String, Modifier>> getModifiers(List<String> modList) {
-        List<Pair<String, Modifier>> result = new ArrayList<>(modList.size());
+    /**
+     * Converts a list of strings in the format "key:value" into a list of Pairs with keys and WeightModifiers.
+     *
+     * @param modList The input list of strings
+     * @return A list of Pairs containing keys and WeightModifiers
+     */
+    public static List<Pair<String, WeightModifier>> getModifiers(List<String> modList) {
+        List<Pair<String, WeightModifier>> result = new ArrayList<>(modList.size());
         for (String member : modList) {
             String[] split = member.split(":",2);
             String key = split[0];
@@ -76,9 +114,10 @@ public class ConfigUtils {
     }
 
     /**
-     * Create a data file if not exists
-     * @param file file path
-     * @return yaml data
+     * Reads data from a YAML configuration file and creates it if it doesn't exist.
+     *
+     * @param file The file path
+     * @return The YamlConfiguration
      */
     @SuppressWarnings("ResultOfMethodCallIgnored")
     public static YamlConfiguration readData(File file) {
@@ -94,30 +133,51 @@ public class ConfigUtils {
         return YamlConfiguration.loadConfiguration(file);
     }
 
-    public static Modifier getModifier(String text) {
+    /**
+     * Parses a WeightModifier from a string representation.
+     *
+     * @param text The input string
+     * @return A WeightModifier based on the provided text
+     * @throws IllegalArgumentException if the weight format is invalid
+     */
+    public static WeightModifier getModifier(String text) {
         if (text.length() == 0) {
             throw new IllegalArgumentException("Weight format is invalid.");
         }
         switch (text.charAt(0)) {
             case '/' -> {
                 double arg = Double.parseDouble(text.substring(1));
-                return weight -> weight / arg;
+                return (player, weight) -> weight / arg;
             }
             case '*' -> {
                 double arg = Double.parseDouble(text.substring(1));
-                return weight -> weight * arg;
+                return (player, weight) -> weight * arg;
             }
             case '-' -> {
                 double arg = Double.parseDouble(text.substring(1));
-                return weight -> weight - arg;
+                return (player, weight) -> weight - arg;
             }
             case '%' -> {
                 double arg = Double.parseDouble(text.substring(1));
-                return weight -> weight % arg;
+                return (player, weight) -> weight % arg;
             }
             case '+' -> {
                 double arg = Double.parseDouble(text.substring(1));
-                return weight -> weight + arg;
+                return (player, weight) -> weight + arg;
+            }
+            case '=' -> {
+                String formula = text.substring(1);
+                boolean hasPapi = PlaceholderManagerImpl.getInstance().hasPapi();
+                return (player, weight) -> {
+                    String temp = formula;
+                    if (hasPapi)
+                        temp = PlaceholderManagerImpl.getInstance().parseCacheablePlaceholders(player, formula);
+                    Expression expression = new ExpressionBuilder(temp)
+                            .variables("0")
+                            .build()
+                            .setVariable("0", weight);
+                    return expression.evaluate();
+                };
             }
             default -> throw new IllegalArgumentException("Invalid weight: " + text);
         }

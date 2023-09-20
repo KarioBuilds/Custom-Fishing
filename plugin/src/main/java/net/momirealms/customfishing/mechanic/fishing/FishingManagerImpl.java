@@ -18,47 +18,45 @@
 package net.momirealms.customfishing.mechanic.fishing;
 
 import com.destroystokyo.paper.event.player.PlayerJumpEvent;
+import de.tr7zw.changeme.nbtapi.NBTCompound;
 import de.tr7zw.changeme.nbtapi.NBTItem;
 import net.momirealms.customfishing.CustomFishingPluginImpl;
 import net.momirealms.customfishing.api.common.Pair;
+import net.momirealms.customfishing.api.event.FishingResultEvent;
 import net.momirealms.customfishing.api.event.LavaFishingEvent;
 import net.momirealms.customfishing.api.event.RodCastEvent;
 import net.momirealms.customfishing.api.manager.FishingManager;
 import net.momirealms.customfishing.api.manager.RequirementManager;
+import net.momirealms.customfishing.api.mechanic.GlobalSettings;
 import net.momirealms.customfishing.api.mechanic.TempFishingState;
-import net.momirealms.customfishing.api.mechanic.action.Action;
 import net.momirealms.customfishing.api.mechanic.action.ActionTrigger;
+import net.momirealms.customfishing.api.mechanic.competition.FishingCompetition;
+import net.momirealms.customfishing.api.mechanic.condition.Condition;
 import net.momirealms.customfishing.api.mechanic.condition.FishingPreparation;
 import net.momirealms.customfishing.api.mechanic.effect.Effect;
-import net.momirealms.customfishing.api.mechanic.game.Game;
-import net.momirealms.customfishing.api.mechanic.game.GameConfig;
+import net.momirealms.customfishing.api.mechanic.effect.EffectCarrier;
+import net.momirealms.customfishing.api.mechanic.effect.EffectModifier;
+import net.momirealms.customfishing.api.mechanic.effect.FishingEffect;
+import net.momirealms.customfishing.api.mechanic.game.BasicGameConfig;
+import net.momirealms.customfishing.api.mechanic.game.GameInstance;
 import net.momirealms.customfishing.api.mechanic.game.GameSettings;
 import net.momirealms.customfishing.api.mechanic.game.GamingPlayer;
 import net.momirealms.customfishing.api.mechanic.loot.Loot;
-import net.momirealms.customfishing.api.mechanic.loot.Modifier;
+import net.momirealms.customfishing.api.mechanic.loot.LootType;
 import net.momirealms.customfishing.api.util.LogUtils;
 import net.momirealms.customfishing.api.util.WeightUtils;
-import net.momirealms.customfishing.mechanic.loot.LootManagerImpl;
 import net.momirealms.customfishing.mechanic.requirement.RequirementManagerImpl;
-import net.momirealms.customfishing.setting.Config;
-import org.bukkit.Bukkit;
-import org.bukkit.NamespacedKey;
-import org.bukkit.Statistic;
+import net.momirealms.customfishing.setting.CFConfig;
+import net.momirealms.customfishing.util.ItemUtils;
+import org.bukkit.*;
 import org.bukkit.entity.*;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.HandlerList;
-import org.bukkit.event.Listener;
-import org.bukkit.event.inventory.InventoryPickupItemEvent;
+import org.bukkit.event.*;
 import org.bukkit.event.player.*;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.HashMap;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class FishingManagerImpl implements Listener, FishingManager {
@@ -106,67 +104,45 @@ public class FishingManagerImpl implements Listener, FishingManager {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onFishMONITOR(PlayerFishEvent event) {
-        if (Config.eventPriority != EventPriority.MONITOR) return;
+        if (CFConfig.eventPriority != EventPriority.MONITOR) return;
         this.selectState(event);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onFishHIGHEST(PlayerFishEvent event) {
-        if (Config.eventPriority != EventPriority.HIGHEST) return;
+        if (CFConfig.eventPriority != EventPriority.HIGHEST) return;
         this.selectState(event);
     }
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onFishHIGH(PlayerFishEvent event) {
-        if (Config.eventPriority != EventPriority.HIGH) return;
+        if (CFConfig.eventPriority != EventPriority.HIGH) return;
         this.selectState(event);
     }
 
     @EventHandler(priority = EventPriority.NORMAL)
     public void onFishNORMAL(PlayerFishEvent event) {
-        if (Config.eventPriority != EventPriority.NORMAL) return;
+        if (CFConfig.eventPriority != EventPriority.NORMAL) return;
         this.selectState(event);
     }
 
     @EventHandler(priority = EventPriority.LOW)
     public void onFishLOW(PlayerFishEvent event) {
-        if (Config.eventPriority != EventPriority.LOW) return;
+        if (CFConfig.eventPriority != EventPriority.LOW) return;
         this.selectState(event);
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onFishLOWEST(PlayerFishEvent event) {
-        if (Config.eventPriority != EventPriority.LOWEST) return;
+        if (CFConfig.eventPriority != EventPriority.LOWEST) return;
         this.selectState(event);
     }
 
     @EventHandler
-    public void onPickUp(PlayerAttemptPickupItemEvent event) {
-        if (event.isCancelled()) return;
-        ItemStack itemStack = event.getItem().getItemStack();
-        NBTItem nbtItem = new NBTItem(itemStack);
-        if (!nbtItem.hasTag("owner")) return;
-        if (!Objects.equals(nbtItem.getString("owner"), event.getPlayer().getName())) {
-            event.setCancelled(true);
-        } else {
-            nbtItem.removeKey("owner");
-            itemStack.setItemMeta(nbtItem.getItem().getItemMeta());
-        }
-    }
-
-    @EventHandler
-    public void onMove(InventoryPickupItemEvent event) {
-        if (event.isCancelled()) return;
-        ItemStack itemStack = event.getItem().getItemStack();
-        NBTItem nbtItem = new NBTItem(itemStack);
-        if (!nbtItem.hasTag("owner")) return;
-        nbtItem.removeKey("owner");
-        itemStack.setItemMeta(nbtItem.getItem().getItemMeta());
-    }
-
-    @EventHandler
     public void onQuit(PlayerQuitEvent event) {
+        final Player player = event.getPlayer();
         this.removeHook(event.getPlayer().getUniqueId());
+        this.removeTempFishingState(player);
     }
 
     @EventHandler
@@ -199,6 +175,26 @@ public class FishingManagerImpl implements Listener, FishingManager {
         }
     }
 
+    @EventHandler
+    public void onLeftClick(PlayerInteractEvent event) {
+        if (event.useItemInHand() == Event.Result.DENY)
+            return;
+        if (event.getAction() != org.bukkit.event.block.Action.LEFT_CLICK_AIR)
+            return;
+        GamingPlayer gamingPlayer = gamingPlayerMap.get(event.getPlayer().getUniqueId());
+        if (gamingPlayer != null) {
+            if (gamingPlayer.onLeftClick()) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    /**
+     * Removes a fishing hook entity associated with a given UUID.
+     *
+     * @param uuid The UUID of the fishing hook entity to be removed.
+     * @return {@code true} if the fishing hook was successfully removed, {@code false} otherwise.
+     */
     @Override
     public boolean removeHook(UUID uuid) {
         FishHook hook = hookCacheMap.remove(uuid);
@@ -210,11 +206,32 @@ public class FishingManagerImpl implements Listener, FishingManager {
         }
     }
 
+    /**
+     * Retrieves a FishHook object associated with the provided player's UUID
+     *
+     * @param uuid The UUID of the player
+     * @return fishhook entity, null if not exists
+     */
     @Override
-    public Optional<FishHook> getHook(UUID uuid) {
-        return Optional.ofNullable(hookCacheMap.get(uuid));
+    @Nullable
+    public FishHook getHook(UUID uuid) {
+        FishHook fishHook = hookCacheMap.get(uuid);
+        if (fishHook != null) {
+            if (!fishHook.isValid()) {
+                hookCacheMap.remove(uuid);
+                return null;
+            } else {
+                return fishHook;
+            }
+        }
+        return null;
     }
 
+    /**
+     * Selects the appropriate fishing state based on the provided PlayerFishEvent and triggers the corresponding action.
+     *
+     * @param event The PlayerFishEvent that represents the fishing action.
+     */
     public void selectState(PlayerFishEvent event) {
         if (event.isCancelled()) return;
         switch (event.getState()) {
@@ -223,6 +240,25 @@ public class FishingManagerImpl implements Listener, FishingManager {
             case CAUGHT_ENTITY -> onCaughtEntity(event);
             case CAUGHT_FISH -> onCaughtFish(event);
             case BITE -> onBite(event);
+            case IN_GROUND -> onInGround(event);
+        }
+    }
+
+    private void onInGround(PlayerFishEvent event) {
+        final Player player = event.getPlayer();
+        FishHook hook = event.getHook();
+        if (player.getGameMode() != GameMode.CREATIVE) {
+            ItemStack itemStack = player.getInventory().getItemInMainHand();
+            if (itemStack.getType() != Material.FISHING_ROD) itemStack = player.getInventory().getItemInOffHand();
+            if (itemStack.getType() == Material.FISHING_ROD) {
+                NBTItem nbtItem = new NBTItem(itemStack);
+                NBTCompound compound = nbtItem.getCompound("CustomFishing");
+                if (compound != null && compound.hasTag("max_dur")) {
+                    event.setCancelled(true);
+                    hook.remove();
+                    ItemUtils.decreaseDurability(itemStack, 2, true);
+                }
+            }
         }
     }
 
@@ -234,33 +270,24 @@ public class FishingManagerImpl implements Listener, FishingManager {
             return;
         }
         // Check mechanic requirements
-        if (!RequirementManager.isRequirementsMet(
-                RequirementManagerImpl.mechanicRequirements,
-                fishingPreparation
+        if (!RequirementManager.isRequirementMet(
+                fishingPreparation, RequirementManagerImpl.mechanicRequirements
         )) {
             return;
         }
         // Merge rod/bait/util effects
-        Effect initialEffect = plugin.getEffectManager().getInitialEffect();
-        initialEffect
-                .merge(fishingPreparation.getRodEffect())
-                .merge(fishingPreparation.getBaitEffect());
+        FishingEffect initialEffect = plugin.getEffectManager().getInitialEffect();
+        fishingPreparation.mergeEffect(initialEffect);
 
-        for (Effect utilEffect : fishingPreparation.getUtilEffects()) {
-            initialEffect.merge(utilEffect);
-        }
-
-        // Apply enchants
-        for (String enchant : plugin.getIntegrationManager().getEnchantments(fishingPreparation.getRodItemStack())) {
-            Effect enchantEffect = plugin.getEffectManager().getEffect("enchant", enchant);
-            if (enchantEffect != null && enchantEffect.canMerge(fishingPreparation)) {
-                initialEffect.merge(enchantEffect);
+        // Merge totem effects
+        EffectCarrier totemEffect = plugin.getTotemManager().getTotemEffect(player.getLocation());
+        if (totemEffect != null)
+            for (EffectModifier modifier : totemEffect.getEffectModifiers()) {
+                modifier.modify(initialEffect, fishingPreparation);
             }
-        }
-        //TODO Apply totem effects
 
         // Call custom event
-        RodCastEvent rodCastEvent = new RodCastEvent(event, initialEffect);
+        RodCastEvent rodCastEvent = new RodCastEvent(event, fishingPreparation, initialEffect);
         Bukkit.getPluginManager().callEvent(rodCastEvent);
         if (rodCastEvent.isCancelled()) {
             return;
@@ -269,20 +296,20 @@ public class FishingManagerImpl implements Listener, FishingManager {
         // Store fishhook entity and apply the effects
         final FishHook fishHook = event.getHook();
         this.hookCacheMap.put(player.getUniqueId(), fishHook);
-        fishHook.setMaxWaitTime((int) (fishHook.getMaxWaitTime() * initialEffect.getTimeModifier()));
-        fishHook.setMinWaitTime((int) (fishHook.getMinWaitTime() * initialEffect.getTimeModifier()));
+        fishHook.setMaxWaitTime((int) (fishHook.getMaxWaitTime() * initialEffect.getHookTimeModifier()));
+        fishHook.setMinWaitTime((int) (fishHook.getMinWaitTime() * initialEffect.getHookTimeModifier()));
         // Reduce amount & Send animation
         var baitItem = fishingPreparation.getBaitItemStack();
         if (baitItem != null) {
-            if (Config.enableBaitAnimation) {
-                ItemStack cloned = baitItem.clone();
-                cloned.setAmount(1);
-                new BaitAnimationTask(plugin, player, fishHook, cloned);
-            }
+            ItemStack cloned = baitItem.clone();
+            cloned.setAmount(1);
+            new BaitAnimationTask(plugin, player, fishHook, cloned);
             baitItem.setAmount(baitItem.getAmount() - 1);
         }
         // Arrange hook check task
         this.hookCheckMap.put(player.getUniqueId(), new HookCheckTimerTask(this, fishHook, fishingPreparation, initialEffect));
+        // trigger actions
+        fishingPreparation.triggerActions(ActionTrigger.CAST);
     }
 
     private void onCaughtEntity(PlayerFishEvent event) {
@@ -293,7 +320,7 @@ public class FishingManagerImpl implements Listener, FishingManager {
         if ((entity instanceof ArmorStand armorStand)
                 && armorStand.getPersistentDataContainer().get(
                 Objects.requireNonNull(NamespacedKey.fromString("lavafishing", plugin)),
-                PersistentDataType.BOOLEAN
+                PersistentDataType.STRING
         ) != null) {
             // The hook is hooked into the temp entity
             // This might be called both not in game and in game
@@ -318,10 +345,20 @@ public class FishingManagerImpl implements Listener, FishingManager {
                     // should not reach this but in case
                     entity.remove();
             }
+            return;
         }
 
-        // TODO It's unsure if the hook would hook into other entities when playing a game
-        // TODO But it should not affect the game result
+        if (player.getGameMode() != GameMode.CREATIVE) {
+            ItemStack itemStack = player.getInventory().getItemInMainHand();
+            if (itemStack.getType() != Material.FISHING_ROD) itemStack = player.getInventory().getItemInOffHand();
+            NBTItem nbtItem = new NBTItem(itemStack);
+            NBTCompound nbtCompound = nbtItem.getCompound("CustomFishing");
+            if (nbtCompound != null && nbtCompound.hasTag("max_dur")) {
+                event.getHook().remove();
+                event.setCancelled(true);
+                ItemUtils.decreaseDurability(itemStack, 5, true);
+            }
+        }
     }
 
     private void onCaughtFish(PlayerFishEvent event) {
@@ -346,10 +383,12 @@ public class FishingManagerImpl implements Listener, FishingManager {
                 // put vanilla loot in map
                 this.vanillaLootMap.put(uuid, item.getItemStack());
             }
+            loot.triggerActions(ActionTrigger.HOOK, temp.getPreparation());
+            temp.getPreparation().triggerActions(ActionTrigger.HOOK);
             if (!loot.disableGame()) {
                 // start the game if the loot has a game
                 event.setCancelled(true);
-                startFishingGame(player, temp.getLoot(), temp.getEffect());
+                startFishingGame(player, temp.getPreparation(), temp.getEffect());
             } else {
                 // If the game is disabled, then do success actions
                 success(temp, event.getHook());
@@ -360,7 +399,7 @@ public class FishingManagerImpl implements Listener, FishingManager {
             return;
         }
 
-        if (!Config.vanillaMechanicIfNoLoot) {
+        if (!CFConfig.vanillaMechanicIfNoLoot) {
             event.setCancelled(true);
             event.getHook().remove();
         }
@@ -382,13 +421,13 @@ public class FishingManagerImpl implements Listener, FishingManager {
         if (temp != null) {
             var loot = temp.getLoot();
 
-            Action[] actions = loot.getActions(ActionTrigger.HOOK);
-            if (actions != null)
-                for (Action action : actions)
-                    action.trigger(temp.getPreparation());
+            loot.triggerActions(ActionTrigger.BITE, temp.getPreparation());
+            temp.getPreparation().triggerActions(ActionTrigger.BITE);
 
             if (loot.instanceGame() && !loot.disableGame()) {
-                startFishingGame(player, loot, temp.getEffect());
+                loot.triggerActions(ActionTrigger.HOOK, temp.getPreparation());
+                temp.getPreparation().triggerActions(ActionTrigger.HOOK);
+                startFishingGame(player, temp.getPreparation(), temp.getEffect());
             }
         }
     }
@@ -417,21 +456,35 @@ public class FishingManagerImpl implements Listener, FishingManager {
 
             var temp = this.tempFishingStateMap.get(uuid);
             if (temp != null ) {
-                if (!temp.getLoot().disableGame()) {
+                Loot loot = temp.getLoot();
+                loot.triggerActions(ActionTrigger.HOOK, temp.getPreparation());
+                temp.getPreparation().triggerActions(ActionTrigger.HOOK);
+                if (!loot.disableGame()) {
                     event.setCancelled(true);
-                    startFishingGame(player, temp.getLoot(), temp.getEffect());
+                    startFishingGame(player, temp.getPreparation(), temp.getEffect());
                 } else {
                     success(temp, event.getHook());
                 }
             }
+            return;
         }
     }
 
+    /**
+     * Removes the temporary fishing state associated with a player.
+     *
+     * @param player The player whose temporary fishing state should be removed.
+     */
     @Override
-    public void removeTempFishingState(Player player) {
-        this.tempFishingStateMap.remove(player.getUniqueId());
+    public TempFishingState removeTempFishingState(Player player) {
+        return this.tempFishingStateMap.remove(player.getUniqueId());
     }
 
+    /**
+     * Processes the game result for a gaming player
+     *
+     * @param gamingPlayer The gaming player whose game result should be processed.
+     */
     @Override
     public void processGameResult(GamingPlayer gamingPlayer) {
         final Player player = gamingPlayer.getPlayer();
@@ -441,7 +494,7 @@ public class FishingManagerImpl implements Listener, FishingManager {
             LogUtils.warn("Unexpected situation: Can't get player's fish hook when processing game results.");
             return;
         }
-        TempFishingState tempFishingState = tempFishingStateMap.remove(uuid);
+        TempFishingState tempFishingState = removeTempFishingState(player);
         if (tempFishingState == null) {
             LogUtils.warn("Unexpected situation: Can't get player's fishing state when processing game results.");
             return;
@@ -450,36 +503,60 @@ public class FishingManagerImpl implements Listener, FishingManager {
         if (bonus != null)
             tempFishingState.getEffect().merge(bonus);
 
-        if (gamingPlayer.isSuccessful())
-            success(tempFishingState, fishHook);
-        else
-            fail(tempFishingState);
-
         gamingPlayer.cancel();
         gamingPlayerMap.remove(uuid);
-        plugin.getScheduler().runTaskSync(fishHook::remove, fishHook.getLocation());
+        plugin.getScheduler().runTaskSync(() -> {
+
+            if (player.getGameMode() != GameMode.CREATIVE)
+                outer: {
+                    ItemStack rod = tempFishingState.getPreparation().getRodItemStack();
+                    PlayerItemDamageEvent damageEvent = new PlayerItemDamageEvent(player, rod, 1, 1);
+                    Bukkit.getPluginManager().callEvent(damageEvent);
+                    if (damageEvent.isCancelled()) {
+                        break outer;
+                    }
+                    ItemUtils.decreaseHookDurability(rod, 1, false);
+                    ItemUtils.decreaseDurability(rod, 1, true);
+                }
+
+            fishHook.remove();
+
+            if (gamingPlayer.isSuccessful())
+                success(tempFishingState, fishHook);
+            else
+                fail(tempFishingState, fishHook);
+        }, fishHook.getLocation());
     }
 
-    public void fail(TempFishingState state) {
+    public void fail(TempFishingState state, FishHook hook) {
         var loot = state.getLoot();
         var fishingPreparation = state.getPreparation();
 
         if (loot.getID().equals("vanilla")) {
             ItemStack itemStack = this.vanillaLootMap.remove(fishingPreparation.getPlayer().getUniqueId());
             if (itemStack != null) {
-                fishingPreparation.insertArg("loot", "<lang:item.minecraft." + itemStack.getType().toString().toLowerCase() + ">");
+                fishingPreparation.insertArg("{nick}", "<lang:item.minecraft." + itemStack.getType().toString().toLowerCase() + ">");
+                fishingPreparation.insertArg("{loot}", itemStack.getType().toString());
             }
         }
 
-        Action[] globalActions = LootManagerImpl.globalLootProperties.getActions(ActionTrigger.FAILURE);
-        if (globalActions != null)
-            for (Action action : globalActions)
-                action.trigger(fishingPreparation);
+        // call event
+        FishingResultEvent fishingResultEvent = new FishingResultEvent(
+                fishingPreparation.getPlayer(),
+                FishingResultEvent.Result.FAILURE,
+                loot,
+                fishingPreparation.getArgs()
+        );
+        Bukkit.getPluginManager().callEvent(fishingResultEvent);
+        if (fishingResultEvent.isCancelled()) {
+            return;
+        }
 
-        Action[] actions = loot.getActions(ActionTrigger.FAILURE);
-        if (actions != null)
-            for (Action action : actions)
-                action.trigger(fishingPreparation);
+        GlobalSettings.triggerLootActions(ActionTrigger.FAILURE, fishingPreparation);
+        loot.triggerActions(ActionTrigger.FAILURE, fishingPreparation);
+        fishingPreparation.triggerActions(ActionTrigger.FAILURE);
+
+        ItemUtils.decreaseHookDurability(fishingPreparation.getRodItemStack(), 1, true);
     }
 
     public void success(TempFishingState state, FishHook hook) {
@@ -487,115 +564,204 @@ public class FishingManagerImpl implements Listener, FishingManager {
         var effect = state.getEffect();
         var fishingPreparation = state.getPreparation();
         var player = fishingPreparation.getPlayer();
-
-        fishingPreparation.insertArg("{score}", String.format("%.2f", loot.getScore() * effect.getScoreMultiplier()));
         fishingPreparation.insertArg("{size-multiplier}", String.format("%.2f", effect.getSizeMultiplier()));
-        fishingPreparation.insertArg("{x}", String.valueOf(hook.getLocation().getBlockX()));
-        fishingPreparation.insertArg("{y}", String.valueOf(hook.getLocation().getBlockY()));
-        fishingPreparation.insertArg("{z}", String.valueOf(hook.getLocation().getBlockZ()));
-        fishingPreparation.insertArg("{loot}", loot.getID());
-        fishingPreparation.insertArg("{nick}", loot.getNick());
+        int amount;
+        if (loot.getType() == LootType.ITEM) {
+            amount = (int) effect.getMultipleLootChance();
+            amount += Math.random() < (effect.getMultipleLootChance() - amount) ? 2 : 1;
+        } else {
+            amount = 1;
+        }
+        fishingPreparation.insertArg("{amount}", String.valueOf(amount));
 
-        plugin.getScheduler().runTaskSync(() -> {
-            switch (loot.getType()) {
-                case LOOT -> {
-                    int amount = (int) effect.getMultipleLootChance();
-                    amount += Math.random() < (effect.getMultipleLootChance() - amount) ? 2 : 1;
-                    fishingPreparation.insertArg("{amount}", String.valueOf(amount));
-                    // build the items for multiple times instead of using setAmount() to make sure that each item is unique
-                    if (loot.getID().equals("vanilla")) {
-                        ItemStack itemStack = vanillaLootMap.remove(player.getUniqueId());
-                        if (itemStack != null) {
-                            fishingPreparation.insertArg("{loot}", "<lang:item.minecraft." + itemStack.getType().toString().toLowerCase() + ">");
-                            for (int i = 0; i < amount; i++) {
-                                plugin.getItemManager().dropItem(hook.getLocation(), player.getLocation(), itemStack.clone());
-                                doSuccessActions(loot, fishingPreparation, player);
-                            }
-                        }
-                    } else {
+        // call event
+        FishingResultEvent fishingResultEvent = new FishingResultEvent(
+                player,
+                FishingResultEvent.Result.SUCCESS,
+                loot,
+                fishingPreparation.getArgs()
+        );
+        Bukkit.getPluginManager().callEvent(fishingResultEvent);
+        if (fishingResultEvent.isCancelled()) {
+            return;
+        }
+
+        switch (loot.getType()) {
+            case ITEM -> {
+
+                // build the items for multiple times instead of using setAmount() to make sure that each item is unique
+                if (loot.getID().equals("vanilla")) {
+                    ItemStack itemStack = vanillaLootMap.remove(player.getUniqueId());
+                    if (itemStack != null) {
+                        fishingPreparation.insertArg("{nick}", "<lang:item.minecraft." + itemStack.getType().toString().toLowerCase() + ">");
                         for (int i = 0; i < amount; i++) {
-                            plugin.getItemManager().dropItem(player, hook.getLocation(), player.getLocation(), loot, fishingPreparation.getArgs());
-                            doSuccessActions(loot, fishingPreparation, player);
+                            plugin.getItemManager().dropItem(hook.getLocation(), player.getLocation(), itemStack.clone());
+                            doSuccessActions(loot, effect, fishingPreparation, player);
                         }
                     }
-                    return;
+                } else {
+                    for (int i = 0; i < amount; i++) {
+                        plugin.getItemManager().dropItem(player, hook.getLocation(), player.getLocation(), loot.getID(), fishingPreparation.getArgs());
+                        doSuccessActions(loot, effect, fishingPreparation, player);
+                    }
                 }
-                case MOB -> plugin.getMobManager().summonMob(hook.getLocation(), player.getLocation(), loot);
-                case BLOCK -> plugin.getBlockManager().summonBlock(player, hook.getLocation(), player.getLocation(), loot);
+                return;
             }
-            doSuccessActions(loot, fishingPreparation, player);
-        }, hook.getLocation());
+            case ENTITY -> {
+                plugin.getEntityManager().summonEntity(hook.getLocation(), player.getLocation(), loot);
+            }
+            case BLOCK -> {
+                plugin.getBlockManager().summonBlock(player, hook.getLocation(), player.getLocation(), loot);
+            }
+        }
+        doSuccessActions(loot, effect, fishingPreparation, player);
     }
 
-    private void doSuccessActions(Loot loot, FishingPreparation fishingPreparation, Player player) {
-        Action[] globalActions = LootManagerImpl.globalLootProperties.getActions(ActionTrigger.SUCCESS);
-        if (globalActions != null)
-            for (Action action : globalActions)
-                action.trigger(fishingPreparation);
+    private void doSuccessActions(Loot loot, Effect effect, FishingPreparation fishingPreparation, Player player) {
+        FishingCompetition competition = plugin.getCompetitionManager().getOnGoingCompetition();
+        if (competition != null) {
+            switch (competition.getGoal()) {
+                case CATCH_AMOUNT -> {
+                    fishingPreparation.insertArg("{score}", "1");
+                    competition.refreshData(player, 1);
+                }
+                case MAX_SIZE, TOTAL_SIZE -> {
+                    String size = fishingPreparation.getArg("{size}");
+                    if (size != null) {
+                        fishingPreparation.insertArg("{score}", size);
+                        competition.refreshData(player, Double.parseDouble(size));
+                    } else {
+                        fishingPreparation.insertArg("{score}", "0");
+                    }
+                }
+                case TOTAL_SCORE -> {
+                    double score = loot.getScore();
+                    if (score != 0) {
+                        fishingPreparation.insertArg("{score}", String.format("%.2f", score * effect.getScoreMultiplier()));
+                        competition.refreshData(player, score * effect.getScoreMultiplier());
+                    } else {
+                        fishingPreparation.insertArg("{score}", "0");
+                    }
+                }
+            }
+        } else {
+            fishingPreparation.insertArg("{score}","-1");
+        }
 
-        Action[] actions = loot.getActions(ActionTrigger.SUCCESS);
-        if (actions != null)
-            for (Action action : actions)
-                action.trigger(fishingPreparation);
+        // events and actions
+        GlobalSettings.triggerLootActions(ActionTrigger.SUCCESS, fishingPreparation);
+        loot.triggerActions(ActionTrigger.SUCCESS, fishingPreparation);
+        fishingPreparation.triggerActions(ActionTrigger.SUCCESS);
 
         player.setStatistic(
                 Statistic.FISH_CAUGHT,
                 player.getStatistic(Statistic.FISH_CAUGHT) + 1
         );
+
+        if (!loot.disableStats())
+            Optional.ofNullable(
+                    plugin.getStatisticsManager()
+                          .getStatistics(player.getUniqueId())
+            ).ifPresent(it -> it.addLootAmount(loot, fishingPreparation, 1));
     }
 
-    @Nullable
-    public Loot getNextLoot(Effect initialEffect, FishingPreparation fishingPreparation) {
-        HashMap<String, Double> lootWithWeight = plugin.getRequirementManager().getLootWithWeight(fishingPreparation);
-        if (lootWithWeight.size() == 0) {
-            LogUtils.warn(String.format("No Loot found at %s for Player %s!", fishingPreparation.getPlayer().getLocation(), fishingPreparation.getPlayer().getName()));
-            return null;
-        }
-
-        for (Pair<String, Modifier> pair : initialEffect.getLootWeightModifier()) {
-            double previous = lootWithWeight.getOrDefault(pair.left(), 0d);
-            lootWithWeight.put(pair.left(), pair.right().modify(previous));
-        }
-
-        String key = WeightUtils.getRandom(lootWithWeight);
-        Loot loot = plugin.getLootManager().getLoot(key);
-        if (loot == null) {
-            LogUtils.warn(String.format("Loot %s doesn't exist!", key));
-            return null;
-        }
-        return loot;
-    }
-
+    /**
+     * Starts a fishing game for the specified player with the given condition and effect.
+     *
+     * @param player    The player starting the fishing game.
+     * @param condition The condition used to determine the game.
+     * @param effect    The effect applied to the game.
+     */
     @Override
-    public void startFishingGame(Player player, Loot loot, Effect effect) {
-        GameConfig gameConfig = loot.getGameConfig();
-        if (gameConfig == null) {
-            gameConfig = plugin.getGameManager().getRandomGameConfig();
-        }
-        var gamePair = gameConfig.getRandomGame(effect);
-        if (gamePair == null) {
+    public void startFishingGame(Player player, Condition condition, Effect effect) {
+        Map<String, Double> gameWithWeight = plugin.getGameManager().getGameWithWeight(condition);
+        plugin.debug(gameWithWeight.toString());
+        String random = WeightUtils.getRandom(gameWithWeight);
+        Pair<BasicGameConfig, GameInstance> gamePair = plugin.getGameManager().getGameInstance(random);
+        if (random == null) {
+            LogUtils.warn("No game is available for player:" + player.getName() + " location:" + condition.getLocation());
             return;
         }
-        startFishingGame(player, gamePair.right(), gamePair.left());
+        if (gamePair == null) {
+            LogUtils.warn(String.format("Game %s doesn't exist.", random));
+            return;
+        }
+        plugin.debug("Game: " + random);
+        startFishingGame(player, Objects.requireNonNull(gamePair.left().getGameSetting(effect)), gamePair.right());
     }
 
+    /**
+     * Starts a fishing game for the specified player with the given settings and game instance.
+     *
+     * @param player       The player starting the fishing game.
+     * @param settings     The game settings for the fishing game.
+     * @param gameInstance The instance of the fishing game to start.
+     */
     @Override
-    public void startFishingGame(Player player, GameSettings settings, Game game) {
-        Optional<FishHook> hook = getHook(player.getUniqueId());
-        if (hook.isPresent()) {
-            this.gamingPlayerMap.put(player.getUniqueId(), game.start(player, hook.get(), settings));
+    public void startFishingGame(Player player, GameSettings settings, GameInstance gameInstance) {
+        plugin.debug("Difficulty:" + settings.getDifficulty());
+        plugin.debug("Time:" + settings.getTime());
+        FishHook hook = getHook(player.getUniqueId());
+        if (hook != null) {
+            this.gamingPlayerMap.put(player.getUniqueId(), gameInstance.start(player, hook, settings));
         } else {
             LogUtils.warn("It seems that player " + player.getName() + " is not fishing. Fishing game failed to start.");
         }
     }
 
+    /**
+     * Checks if a player with the given UUID has cast their fishing hook.
+     *
+     * @param uuid The UUID of the player to check.
+     * @return {@code true} if the player has cast their fishing hook, {@code false} otherwise.
+     */
+    @Override
+    public boolean hasPlayerCastHook(UUID uuid) {
+        FishHook fishHook = hookCacheMap.get(uuid);
+        if (fishHook == null) return false;
+        if (!fishHook.isValid()) {
+            hookCacheMap.remove(uuid);
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Sets the temporary fishing state for a player.
+     *
+     * @param player            The player for whom to set the temporary fishing state.
+     * @param tempFishingState  The temporary fishing state to set for the player.
+     */
     @Override
     public void setTempFishingState(Player player, TempFishingState tempFishingState) {
         tempFishingStateMap.put(player.getUniqueId(), tempFishingState);
     }
 
-    @Override
     public void removeHookCheckTask(Player player) {
         hookCheckMap.remove(player.getUniqueId());
+    }
+
+    /**
+     * Gets the {@link GamingPlayer} object associated with the given UUID.
+     *
+     * @param uuid The UUID of the player.
+     * @return The {@link GamingPlayer} object if found, or {@code null} if not found.
+     */
+    @Override
+    @Nullable
+    public GamingPlayer getGamingPlayer(UUID uuid) {
+        return gamingPlayerMap.get(uuid);
+    }
+
+    /**
+     * Gets the {@link TempFishingState} object associated with the given UUID.
+     *
+     * @param uuid The UUID of the player.
+     * @return The {@link TempFishingState} object if found, or {@code null} if not found.
+     */
+    @Override
+    @Nullable
+    public TempFishingState getTempFishingState(UUID uuid) {
+        return tempFishingStateMap.get(uuid);
     }
 }

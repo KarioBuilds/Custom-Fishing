@@ -7,7 +7,7 @@ plugins {
 
 allprojects {
 
-    version = "2.0-beta"
+    version = "2.0-beta-7"
 
     apply<JavaPlugin>()
     apply(plugin = "java")
@@ -45,13 +45,14 @@ subprojects {
         val props = mapOf("version" to version)
         inputs.properties(props)
         filteringCharset = "UTF-8"
-        filesMatching("plugin.yml") {
+        filesMatching("*plugin.yml") {
             expand(props)
         }
     }
 
     tasks.withType<JavaCompile> {
         options.encoding = "UTF-8"
+        options.release.set(17)
     }
 
     tasks.shadowJar {
@@ -60,14 +61,23 @@ subprojects {
         archiveFileName.set("CustomFishing-" + project.name + "-" + project.version + ".jar")
     }
 
-//    tasks.javadoc.configure {
-//        options.quiet()
-//    }
-//
-//    if ("api" == project.name) {
-//        java {
-//            withSourcesJar()
-//            withJavadocJar()
-//        }
-//    }
+    if ("api" == project.name) {
+        publishing {
+            publications {
+                create<MavenPublication>("mavenJava") {
+                    groupId = "net.momirealms"
+                    artifactId = "CustomFishing"
+                    version = rootProject.version.toString()
+                    artifact(tasks.shadowJar)
+                }
+            }
+        }
+        tasks.javadoc.configure {
+            options.quiet()
+        }
+        java {
+            withSourcesJar()
+            withJavadocJar()
+        }
+    }
 }

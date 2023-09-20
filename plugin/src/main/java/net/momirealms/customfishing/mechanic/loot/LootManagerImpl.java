@@ -18,16 +18,21 @@
 package net.momirealms.customfishing.mechanic.loot;
 
 import net.momirealms.customfishing.api.CustomFishingPlugin;
+import net.momirealms.customfishing.api.common.Pair;
 import net.momirealms.customfishing.api.manager.LootManager;
-import net.momirealms.customfishing.api.mechanic.action.Action;
-import net.momirealms.customfishing.api.mechanic.action.ActionTrigger;
-import net.momirealms.customfishing.api.mechanic.game.GameConfig;
+import net.momirealms.customfishing.api.mechanic.condition.Condition;
+import net.momirealms.customfishing.api.mechanic.effect.Effect;
+import net.momirealms.customfishing.api.mechanic.loot.CFLoot;
 import net.momirealms.customfishing.api.mechanic.loot.Loot;
 import net.momirealms.customfishing.api.mechanic.loot.LootType;
+import net.momirealms.customfishing.api.mechanic.loot.WeightModifier;
 import net.momirealms.customfishing.api.util.LogUtils;
-import org.apache.commons.lang3.StringUtils;
+import net.momirealms.customfishing.api.util.WeightUtils;
+import net.momirealms.customfishing.mechanic.requirement.RequirementManagerImpl;
+import net.momirealms.customfishing.util.ConfigUtils;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -37,36 +42,40 @@ import java.util.*;
 public class LootManagerImpl implements LootManager {
 
     private final CustomFishingPlugin plugin;
+    // A map that associates loot IDs with their respective loot configurations.
     private final HashMap<String, Loot> lootMap;
-    public static CFLoot globalLootProperties;
-    private boolean disableStats;
-    private boolean disableGames;
-    private boolean instantGame;
-    private boolean showInFinder;
-    private String gameGroup;
+    // A map that associates loot group IDs with lists of loot IDs.
+    private final HashMap<String, List<String>> lootGroupMap;
 
     public LootManagerImpl(CustomFishingPlugin plugin) {
         this.plugin = plugin;
         this.lootMap = new HashMap<>();
+        this.lootGroupMap = new HashMap<>();
     }
 
     public void load() {
-        this.loadGlobalLootProperties();
         this.loadLootsFromPluginFolder();
     }
 
     public void unload() {
         this.lootMap.clear();
+        this.lootGroupMap.clear();
     }
 
     public void disable() {
         unload();
     }
 
+    /**
+     * Loads loot configurations from the plugin's content folders.
+     * This method scans the "item," "entity," and "block" subfolders within the plugin's data folder
+     * and loads loot configurations from YAML files.
+     * If the subfolders or default loot files don't exist, it creates them.
+     */
     @SuppressWarnings("DuplicatedCode")
     public void loadLootsFromPluginFolder() {
         Deque<File> fileDeque = new ArrayDeque<>();
-        for (String type : List.of("loots", "mobs", "blocks")) {
+        for (String type : List.of("item", "entity", "block")) {
             File typeFolder = new File(plugin.getDataFolder() + File.separator + "contents" + File.separator + type);
             if (!typeFolder.exists()) {
                 if (!typeFolder.mkdirs()) return;
@@ -80,34 +89,130 @@ public class LootManagerImpl implements LootManager {
                 for (File subFile : files) {
                     if (subFile.isDirectory()) {
                         fileDeque.push(subFile);
-                    } else if (subFile.isFile()) {
-                        loadSingleFile(subFile, StringUtils.chop(type));
+                    } else if (subFile.isFile() && subFile.getName().endsWith(".yml")) {
+                        loadSingleFile(subFile, type);
                     }
                 }
             }
         }
     }
 
+    /**
+     * Retrieves a list of loot IDs associated with a loot group key.
+     *
+     * @param key The key of the loot group.
+     * @return A list of loot IDs belonging to the specified loot group, or null if not found.
+     */
+    @Nullable
+    @Override
+    public List<String> getLootGroup(String key) {
+        return lootGroupMap.get(key);
+    }
+
+    /**
+     * Retrieves a loot configuration based on a provided loot key.
+     *
+     * @param key The key of the loot configuration.
+     * @return The Loot object associated with the specified loot key, or null if not found.
+     */
     @Nullable
     @Override
     public Loot getLoot(String key) {
         return lootMap.get(key);
     }
 
-    private void loadGlobalLootProperties() {
-        YamlConfiguration config = plugin.getConfig("config.yml");
-        globalLootProperties = getSingleSectionItem(
-                Objects.requireNonNull(config.getConfigurationSection("mechanics.global-loot-properties")),
-                "GLOBAL",
-                "global"
-        );
-        disableStats = globalLootProperties.disableStats();
-        disableGames = globalLootProperties.disableGame();
-        instantGame = globalLootProperties.instanceGame();
-        showInFinder = globalLootProperties.showInFinder();
-        gameGroup = globalLootProperties.gameConfig;
+    /**
+     * Retrieves a collection of all loot configuration keys.
+     *
+     * @return A collection of all loot configuration keys.
+     */
+    @Override
+    public Collection<String> getAllLootKeys() {
+        return lootMap.keySet();
     }
 
+    /**
+     * Retrieves a collection of all loot configurations.
+     *
+     * @return A collection of all loot configurations.
+     */
+    @Override
+    public Collection<Loot> getAllLoots() {
+        return lootMap.values();
+    }
+
+    /**
+     * Retrieves loot configurations with weights based on a given condition.
+     *
+     * @param condition The condition used to filter loot configurations.
+     * @return A mapping of loot configuration keys to their associated weights.
+     */
+    @Override
+    public HashMap<String, Double> getLootWithWeight(Condition condition) {
+        return ((RequirementManagerImpl) plugin.getRequirementManager()).getLootWithWeight(condition);
+    }
+
+    /**
+     * Get a collection of possible loot keys based on a given condition.
+     *
+     * @param condition The condition to determine possible loot.
+     * @return A collection of loot keys.
+     */
+    @Override
+    public Collection<String> getPossibleLootKeys(Condition condition) {
+        return ((RequirementManagerImpl) plugin.getRequirementManager()).getLootWithWeight(condition).keySet();
+    }
+
+    /**
+     * Get a map of possible loot keys with their corresponding weights, considering fishing effect and condition.
+     *
+     * @param initialEffect The effect to apply weight modifiers.
+     * @param condition     The condition to determine possible loot.
+     * @return A map of loot keys and their weights.
+     */
+    @NotNull
+    @Override
+    public Map<String, Double> getPossibleLootKeysWithWeight(Effect initialEffect, Condition condition) {
+        Map<String, Double> lootWithWeight = ((RequirementManagerImpl) plugin.getRequirementManager()).getLootWithWeight(condition);
+
+        Player player = condition.getPlayer();
+        for (Pair<String, WeightModifier> pair : initialEffect.getWeightModifier()) {
+            Double previous = lootWithWeight.get(pair.left());
+            if (previous != null)
+                lootWithWeight.put(pair.left(), pair.right().modify(player, previous));
+        }
+        for (Pair<String, WeightModifier> pair : initialEffect.getWeightModifierIgnored()) {
+            double previous = lootWithWeight.getOrDefault(pair.left(), 0d);
+            lootWithWeight.put(pair.left(), pair.right().modify(player, previous));
+        }
+        return lootWithWeight;
+    }
+
+    /**
+     * Get the next loot item based on fishing effect and condition.
+     *
+     * @param initialEffect The effect to apply weight modifiers.
+     * @param condition     The condition to determine possible loot.
+     * @return The next loot item, or null if it doesn't exist.
+     */
+    @Override
+    @Nullable
+    public Loot getNextLoot(Effect initialEffect, Condition condition) {
+        String key = WeightUtils.getRandom(getPossibleLootKeysWithWeight(initialEffect, condition));
+        Loot loot = getLoot(key);
+        if (loot == null) {
+            LogUtils.warn(String.format("Loot %s doesn't exist.", key));
+            return null;
+        }
+        return loot;
+    }
+
+    /**
+     * Loads loot configurations from a single YAML file and populates the lootMap and lootGroupMap.
+     *
+     * @param file      The YAML file containing loot configurations.
+     * @param namespace The namespace indicating the type of loot (e.g., "item," "entity," "block").
+     */
     private void loadSingleFile(File file, String namespace) {
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
         for (Map.Entry<String, Object> entry : yaml.getValues(false).entrySet()) {
@@ -117,205 +222,44 @@ public class LootManagerImpl implements LootManager {
                         namespace,
                         entry.getKey()
                 );
+                // Check for duplicate loot configurations and log an error if found.
                 if (lootMap.containsKey(entry.getKey())) {
                     LogUtils.severe("Duplicated loot found: " + entry.getKey() + ".");
                 } else {
                     lootMap.put(entry.getKey(), loot);
                 }
+                String[] group = loot.getLootGroup();
+                // If the loot configuration belongs to one or more groups, update lootGroupMap.
+                if (group != null) {
+                    for (String g : group) {
+                        List<String> groupMembers = lootGroupMap.computeIfAbsent(g, k -> new ArrayList<>());
+                        groupMembers.add(loot.getID());
+                    }
+                }
             }
         }
     }
 
+    /**
+     * Creates a single loot configuration item from a ConfigurationSection.
+     *
+     * @param section   The ConfigurationSection containing loot configuration data.
+     * @param namespace The namespace indicating the type of loot (e.g., "item," "entity," "block").
+     * @param key       The unique key identifying the loot configuration.
+     * @return A CFLoot object representing the loot configuration.
+     */
     private CFLoot getSingleSectionItem(ConfigurationSection section, String namespace, String key) {
         return new CFLoot.Builder(key, LootType.valueOf(namespace.toUpperCase(Locale.ENGLISH)))
-                .disableStats(section.getBoolean("disable-stat", disableStats))
-                .disableGames(section.getBoolean("disable-game", disableGames))
-                .instantGame(section.getBoolean("instant-game", instantGame))
-                .showInFinder(section.getBoolean("show-in-fishfinder", showInFinder))
-                .gameConfig(section.getString("game-group", gameGroup))
+                .disableStats(section.getBoolean("disable-stat", false))
+                .disableGames(section.getBoolean("disable-game", false))
+                .instantGame(section.getBoolean("instant-game", false))
+                .showInFinder(section.getBoolean("show-in-fishfinder", true))
+                .gameConfig(section.getString("game"))
+                .score(section.getDouble("score"))
+                .lootGroup(ConfigUtils.stringListArgs(section.get("group")).toArray(new String[0]))
                 .nick(section.getString("nick", section.getString("display.name", key)))
-                .addActions(getActionMap(section.getConfigurationSection("action")))
-                .addTimesActions(getTimesActionMap(section.getConfigurationSection("action.success-times")))
+                .addActions(plugin.getActionManager().getActionMap(section.getConfigurationSection("events")))
+                .addTimesActions(plugin.getActionManager().getTimesActionMap(section.getConfigurationSection("events.success-times")))
                 .build();
     }
-
-    private HashMap<ActionTrigger, Action[]> getActionMap(ConfigurationSection section) {
-        HashMap<ActionTrigger, Action[]> actionMap = new HashMap<>();
-        if (section == null) return actionMap;
-        for (Map.Entry<String, Object> entry : section.getValues(false).entrySet()) {
-            if (entry.getValue() instanceof ConfigurationSection innerSection) {
-                actionMap.put(
-                        ActionTrigger.valueOf(entry.getKey().toUpperCase(Locale.ENGLISH)),
-                        plugin.getActionManager().getActions(innerSection)
-                );
-            }
-        }
-        return actionMap;
-    }
-
-    private HashMap<Integer, Action[]> getTimesActionMap(ConfigurationSection section) {
-        HashMap<Integer, Action[]> actionMap = new HashMap<>();
-        if (section == null) return actionMap;
-        for (Map.Entry<String, Object> entry : section.getValues(false).entrySet()) {
-            if (entry.getValue() instanceof ConfigurationSection innerSection) {
-                actionMap.put(Integer.parseInt(entry.getKey()), plugin.getActionManager().getActions(innerSection));
-            }
-        }
-        return actionMap;
-    }
-
-    public static class CFLoot implements Loot {
-
-        private final String id;
-        private final LootType type;
-        private String gameConfig;
-        private final HashMap<ActionTrigger, Action[]> actionMap;
-        private final HashMap<Integer, Action[]> successTimesActionMap;
-        private String nick;
-        private boolean showInFinder;
-        private boolean disableGame;
-        private boolean disableStats;
-        private boolean instanceGame;
-        private double score;
-
-        public CFLoot(String id, LootType type) {
-            this.id = id;
-            this.type = type;
-            this.actionMap = new HashMap<>();
-            this.successTimesActionMap = new HashMap<>();
-        }
-
-        public static CFLoot of(String id, LootType type) {
-            return new CFLoot(id, type);
-        }
-
-        public static class Builder {
-
-            private final CFLoot loot;
-
-            public Builder(String id, LootType type) {
-                this.loot = new CFLoot(id, type);
-            }
-
-            public Builder nick(String nick) {
-                this.loot.nick = nick;
-                return this;
-            }
-
-            public Builder showInFinder(boolean show) {
-                this.loot.showInFinder = show;
-                return this;
-            }
-
-            public Builder instantGame(boolean instant) {
-                this.loot.instanceGame = instant;
-                return this;
-            }
-
-            public Builder gameConfig(String gameConfig) {
-                this.loot.gameConfig = gameConfig;
-                return this;
-            }
-
-            public Builder disableGames(boolean disable) {
-                this.loot.disableGame = disable;
-                return this;
-            }
-
-            public Builder disableStats(boolean disable) {
-                this.loot.disableStats = disable;
-                return this;
-            }
-
-            public Builder score(double score) {
-                this.loot.score = score;
-                return this;
-            }
-
-            public Builder addActions(ActionTrigger trigger, Action[] actions) {
-                this.loot.actionMap.put(trigger, actions);
-                return this;
-            }
-
-            public Builder addActions(HashMap<ActionTrigger, Action[]> actionMap) {
-                this.loot.actionMap.putAll(actionMap);
-                return this;
-            }
-
-            public Builder addTimesActions(int times, Action[] actions) {
-                this.loot.successTimesActionMap.put(times, actions);
-                return this;
-            }
-
-            public Builder addTimesActions(HashMap<Integer, Action[]> actionMap) {
-                this.loot.successTimesActionMap.putAll(actionMap);
-                return this;
-            }
-
-            public CFLoot build() {
-                return loot;
-            }
-        }
-
-        @Override
-        public boolean instanceGame() {
-            return this.instanceGame;
-        }
-
-        @Override
-        public String getID() {
-            return this.id;
-        }
-
-        @Override
-        public LootType getType() {
-            return this.type;
-        }
-
-        @Override
-        public @NotNull String getNick() {
-            return this.nick;
-        }
-
-        @Override
-        public boolean showInFinder() {
-            return this.showInFinder;
-        }
-
-        @Override
-        public double getScore() {
-            return this.score;
-        }
-
-        @Override
-        public boolean disableGame() {
-            return this.disableGame;
-        }
-
-        @Override
-        public boolean disableStats() {
-            return this.disableStats;
-        }
-
-        @Override
-        public GameConfig getGameConfig() {
-            return CustomFishingPlugin.get().getGameManager().getGameConfig(this.gameConfig);
-        }
-
-        @Override
-        public Action[] getActions(ActionTrigger actionTrigger) {
-            return actionMap.get(actionTrigger);
-        }
-
-        @Override
-        public Action[] getSuccessTimesActions(int times) {
-            return successTimesActionMap.get(times);
-        }
-
-        @Override
-        public HashMap<Integer, Action[]> getSuccessTimesActionMap() {
-            return successTimesActionMap;
-        }
-    }
-
 }

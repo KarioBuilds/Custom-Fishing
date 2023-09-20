@@ -28,14 +28,15 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
-public class YAMLImpl extends AbstractStorage {
+/**
+ * A data storage implementation that uses YAML files to store player data, with support for legacy data.
+ */
+public class YAMLImpl extends AbstractStorage implements LegacyDataStorageInterface {
 
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     public YAMLImpl(CustomFishingPlugin plugin) {
         super(plugin);
         File folder = new File(plugin.getDataFolder(), "data");
@@ -47,18 +48,24 @@ public class YAMLImpl extends AbstractStorage {
         return StorageType.YAML;
     }
 
+    /**
+     * Get the file associated with a player's UUID for storing YAML data.
+     *
+     * @param uuid The UUID of the player.
+     * @return The file for the player's data.
+     */
     public File getPlayerDataFile(UUID uuid) {
         return new File(plugin.getDataFolder(), "data" + File.separator + uuid + ".yml");
     }
 
     @Override
-    public CompletableFuture<Optional<PlayerData>> getPlayerData(UUID uuid, boolean ignore) {
+    public CompletableFuture<Optional<PlayerData>> getPlayerData(UUID uuid, boolean lock) {
         File dataFile = getPlayerDataFile(uuid);
         if (!dataFile.exists()) {
             if (Bukkit.getPlayer(uuid) != null) {
-                return CompletableFuture.completedFuture(Optional.of(PlayerData.empty()));
+                return CompletableFuture.completedFuture(Optional.of(PlayerData.LOCKED));
             } else {
-                return CompletableFuture.completedFuture(Optional.of(PlayerData.NEVER_PLAYED));
+                return CompletableFuture.completedFuture(Optional.of(PlayerData.empty()));
             }
         }
         YamlConfiguration data = ConfigUtils.readData(dataFile);
@@ -72,7 +79,7 @@ public class YAMLImpl extends AbstractStorage {
     }
 
     @Override
-    public CompletableFuture<Boolean> setPlayData(UUID uuid, PlayerData playerData, boolean ignore) {
+    public CompletableFuture<Boolean> updatePlayerData(UUID uuid, PlayerData playerData, boolean ignore) {
         YamlConfiguration data = new YamlConfiguration();
         data.set("name", playerData.getName());
         data.set("bag", playerData.getBagData().serialized);
@@ -91,7 +98,33 @@ public class YAMLImpl extends AbstractStorage {
         return CompletableFuture.completedFuture(true);
     }
 
-    public StatisticData getStatistics(ConfigurationSection section) {
+    @Override
+    public Set<UUID> getUniqueUsers(boolean legacy) {
+        File folder;
+        if (legacy) {
+            folder = new File(plugin.getDataFolder(), "data/fishingbag");
+        } else {
+            folder = new File(plugin.getDataFolder(), "data");
+        }
+        Set<UUID> uuids = new HashSet<>();
+        if (folder.exists()) {
+            File[] files = folder.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    uuids.add(UUID.fromString(file.getName().substring(0, file.getName().length() - 4)));
+                }
+            }
+        }
+        return uuids;
+    }
+
+    /**
+     * Parse statistics data from a YAML ConfigurationSection.
+     *
+     * @param section The ConfigurationSection containing statistics data.
+     * @return The parsed StatisticData object.
+     */
+    private StatisticData getStatistics(ConfigurationSection section) {
         if (section == null)
             return StatisticData.empty();
         else {
@@ -101,5 +134,44 @@ public class YAMLImpl extends AbstractStorage {
             }
             return new StatisticData(map);
         }
+    }
+
+    @Override
+    public CompletableFuture<Optional<PlayerData>> getLegacyPlayerData(UUID uuid) {
+        // Retrieve legacy player data (YAML format) for a given UUID.
+        var builder = new PlayerData.Builder().setName("");
+        File bagFile = new File(plugin.getDataFolder(), "data/fishingbag/" + uuid + ".yml");
+        if (bagFile.exists()) {
+            YamlConfiguration yaml = YamlConfiguration.loadConfiguration(bagFile);
+            String contents = yaml.getString("contents", "");
+            int size = yaml.getInt("size", 9);
+            builder.setBagData(new InventoryData(contents, size));
+        } else {
+            builder.setBagData(InventoryData.empty());
+        }
+
+        File statFile = new File(plugin.getDataFolder(), "data/statistics/" + uuid + ".yml");
+        if (statFile.exists()) {
+            YamlConfiguration yaml = YamlConfiguration.loadConfiguration(statFile);
+            HashMap<String, Integer> map = new HashMap<>();
+            for (Map.Entry<String, Object> entry : yaml.getValues(false).entrySet()) {
+                if (entry.getValue() instanceof Integer integer) {
+                    map.put(entry.getKey(), integer);
+                }
+            }
+            builder.setStats(new StatisticData(map));
+        } else {
+            builder.setStats(StatisticData.empty());
+        }
+
+        File sellFile = new File(plugin.getDataFolder(), "data/sell/" + uuid + ".yml");
+        if (sellFile.exists()) {
+            YamlConfiguration yaml = YamlConfiguration.loadConfiguration(sellFile);
+            builder.setEarningData(new EarningData(yaml.getDouble("earnings"), yaml.getInt("date")));
+        } else {
+            builder.setEarningData(EarningData.empty());
+        }
+
+        return CompletableFuture.completedFuture(Optional.of(builder.build()));
     }
 }

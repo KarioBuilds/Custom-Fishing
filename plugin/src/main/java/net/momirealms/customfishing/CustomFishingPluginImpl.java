@@ -34,20 +34,25 @@ import net.momirealms.customfishing.mechanic.bag.BagManagerImpl;
 import net.momirealms.customfishing.mechanic.block.BlockManagerImpl;
 import net.momirealms.customfishing.mechanic.competition.CompetitionManagerImpl;
 import net.momirealms.customfishing.mechanic.effect.EffectManagerImpl;
+import net.momirealms.customfishing.mechanic.entity.EntityManagerImpl;
 import net.momirealms.customfishing.mechanic.fishing.FishingManagerImpl;
 import net.momirealms.customfishing.mechanic.game.GameManagerImpl;
+import net.momirealms.customfishing.mechanic.hook.HookManagerImpl;
 import net.momirealms.customfishing.mechanic.item.ItemManagerImpl;
 import net.momirealms.customfishing.mechanic.loot.LootManagerImpl;
 import net.momirealms.customfishing.mechanic.market.MarketManagerImpl;
-import net.momirealms.customfishing.mechanic.mob.MobManagerImpl;
+import net.momirealms.customfishing.mechanic.misc.CoolDownManager;
 import net.momirealms.customfishing.mechanic.requirement.RequirementManagerImpl;
+import net.momirealms.customfishing.mechanic.statistic.StatisticsManagerImpl;
+import net.momirealms.customfishing.mechanic.totem.TotemManagerImpl;
 import net.momirealms.customfishing.scheduler.SchedulerImpl;
-import net.momirealms.customfishing.setting.Config;
-import net.momirealms.customfishing.setting.Locale;
+import net.momirealms.customfishing.setting.CFConfig;
+import net.momirealms.customfishing.setting.CFLocale;
 import net.momirealms.customfishing.storage.StorageManagerImpl;
 import net.momirealms.customfishing.version.VersionManagerImpl;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.event.HandlerList;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
@@ -57,6 +62,7 @@ import java.util.TimeZone;
 public class CustomFishingPluginImpl extends CustomFishingPlugin {
 
     private static ProtocolManager protocolManager;
+    private CoolDownManager coolDownManager;
 
     public CustomFishingPluginImpl() {
         super();
@@ -85,15 +91,19 @@ public class CustomFishingPluginImpl extends CustomFishingPlugin {
         this.itemManager = new ItemManagerImpl(this);
         this.lootManager = new LootManagerImpl(this);
         this.marketManager = new MarketManagerImpl(this);
-        this.mobManager = new MobManagerImpl(this);
+        this.entityManager = new EntityManagerImpl(this);
         this.placeholderManager = new PlaceholderManagerImpl(this);
         this.requirementManager = new RequirementManagerImpl(this);
         this.scheduler = new SchedulerImpl(this);
         this.storageManager = new StorageManagerImpl(this);
         this.competitionManager = new CompetitionManagerImpl(this);
         this.integrationManager = new IntegrationManagerImpl(this);
+        this.statisticsManager = new StatisticsManagerImpl(this);
+        this.coolDownManager = new CoolDownManager(this);
+        this.totemManager = new TotemManagerImpl(this);
+        this.hookManager = new HookManagerImpl(this);
         this.reload();
-        if (Config.updateChecker)
+        if (CFConfig.updateChecker)
             this.versionManager.checkUpdate().thenAccept(result -> {
                 if (!result) this.getAdventure().sendConsoleMessage("[CustomFishing] You are using the latest version.");
                 else this.getAdventure().sendConsoleMessage("[CustomFishing] Update is available: <u>https://polymart.org/resource/customfishing.2723<!u>");
@@ -111,28 +121,44 @@ public class CustomFishingPluginImpl extends CustomFishingPlugin {
         ((ItemManagerImpl) this.itemManager).disable();
         ((LootManagerImpl) this.lootManager).disable();
         ((MarketManagerImpl) this.marketManager).disable();
-        ((MobManagerImpl) this.mobManager).disable();
+        ((EntityManagerImpl) this.entityManager).disable();
         ((RequirementManagerImpl) this.requirementManager).disable();
         ((SchedulerImpl) this.scheduler).shutdown();
         ((IntegrationManagerImpl) this.integrationManager).disable();
         ((StorageManagerImpl) this.storageManager).disable();
         ((CompetitionManagerImpl) this.competitionManager).disable();
         ((PlaceholderManagerImpl) this.placeholderManager).disable();
+        ((StatisticsManagerImpl) this.statisticsManager).disable();
+        ((ActionManagerImpl) this.actionManager).disable();
+        ((TotemManagerImpl) this.totemManager).disable();
+        ((HookManagerImpl) this.hookManager).disable();
+        this.coolDownManager.disable();
+        this.commandManager.unload();
+        HandlerList.unregisterAll(this);
     }
 
+    /**
+     * Reload the plugin
+     */
     @Override
     public void reload() {
-        Config.load();
-        Locale.load();
+        CFConfig.load();
+        CFLocale.load();
         ((SchedulerImpl) this.scheduler).reload();
         ((RequirementManagerImpl) this.requirementManager).unload();
         ((RequirementManagerImpl) this.requirementManager).load();
+        ((ActionManagerImpl) this.actionManager).unload();
+        ((ActionManagerImpl) this.actionManager).load();
+        ((GameManagerImpl) this.gameManager).unload();
+        ((GameManagerImpl) this.gameManager).load();
         ((ItemManagerImpl) this.itemManager).unload();
         ((ItemManagerImpl) this.itemManager).load();
         ((LootManagerImpl) this.lootManager).unload();
         ((LootManagerImpl) this.lootManager).load();
         ((FishingManagerImpl) this.fishingManager).unload();
         ((FishingManagerImpl) this.fishingManager).load();
+        ((TotemManagerImpl) this.totemManager).unload();
+        ((TotemManagerImpl) this.totemManager).load();
         ((EffectManagerImpl) this.effectManager).unload();
         ((EffectManagerImpl) this.effectManager).load();
         ((MarketManagerImpl) this.marketManager).unload();
@@ -141,36 +167,51 @@ public class CustomFishingPluginImpl extends CustomFishingPlugin {
         ((BagManagerImpl) this.bagManager).load();
         ((BlockManagerImpl) this.blockManager).unload();
         ((BlockManagerImpl) this.blockManager).load();
-        ((GameManagerImpl) this.gameManager).unload();
-        ((GameManagerImpl) this.gameManager).load();
-        ((MobManagerImpl) this.mobManager).unload();
-        ((MobManagerImpl) this.mobManager).load();
+        ((EntityManagerImpl) this.entityManager).unload();
+        ((EntityManagerImpl) this.entityManager).load();
         ((CompetitionManagerImpl) this.competitionManager).unload();
         ((CompetitionManagerImpl) this.competitionManager).load();
         ((StorageManagerImpl) this.storageManager).reload();
-        this.commandManager.loadCommands();
+        ((StatisticsManagerImpl) this.statisticsManager).unload();
+        ((StatisticsManagerImpl) this.statisticsManager).load();
+        ((PlaceholderManagerImpl) this.placeholderManager).unload();
+        ((PlaceholderManagerImpl) this.placeholderManager).load();
+        ((HookManagerImpl) this.hookManager).unload();
+        ((HookManagerImpl) this.hookManager).load();
+        this.commandManager.unload();
+        this.commandManager.load();
+        this.coolDownManager.unload();
+        this.coolDownManager.load();
     }
 
+    /**
+     * Load plugin dependencies
+     */
     private void loadDependencies() {
-        String libRepo = TimeZone.getDefault().getID().startsWith("Asia") ?
+        String mavenRepo = TimeZone.getDefault().getID().startsWith("Asia") ?
                 "https://maven.aliyun.com/repository/public/" : "https://repo.maven.apache.org/maven2/";
         LibraryLoader.loadDependencies(
-                "org.apache.commons:commons-pool2:2.11.1", libRepo,
-                "redis.clients:jedis:4.4.2", libRepo,
-                "dev.dejvokep:boosted-yaml:1.3.1", libRepo,
-                "com.zaxxer:HikariCP:5.0.1", libRepo,
-                "net.objecthunter:exp4j:0.4.8", libRepo,
-                "org.mariadb.jdbc:mariadb-java-client:3.1.4", libRepo,
-                "mysql:mysql-connector-java:8.0.30", libRepo,
-                "commons-io:commons-io:2.13.0", libRepo,
-                "com.google.code.gson:gson:2.10.1", libRepo,
-                "com.h2database:h2:2.2.220", libRepo,
-                "org.mongodb:mongodb-driver-sync:4.10.2", libRepo,
-                "org.xerial:sqlite-jdbc:3.42.0.0", libRepo,
-                "dev.jorel:commandapi-bukkit-shade:9.1.0", "https://repo.maven.apache.org/maven2/"
+                "org.apache.commons:commons-pool2:2.11.1", mavenRepo,
+                "redis.clients:jedis:5.0.0", mavenRepo,
+                "dev.dejvokep:boosted-yaml:1.3.1", mavenRepo,
+                "com.zaxxer:HikariCP:5.0.1", mavenRepo,
+                "net.objecthunter:exp4j:0.4.8", mavenRepo,
+                "org.mariadb.jdbc:mariadb-java-client:3.2.0", mavenRepo,
+                "mysql:mysql-connector-java:8.0.30", mavenRepo,
+                "commons-io:commons-io:2.13.0", mavenRepo,
+                "com.google.code.gson:gson:2.10.1", mavenRepo,
+                "com.h2database:h2:2.2.220", mavenRepo,
+                "org.mongodb:mongodb-driver-sync:4.10.2", mavenRepo,
+                "org.mongodb:mongodb-driver-core:4.10.2", mavenRepo,
+                "org.mongodb:bson:4.10.2", mavenRepo,
+                "org.xerial:sqlite-jdbc:3.42.0.0", mavenRepo,
+                "dev.jorel:commandapi-bukkit-shade:9.1.0", mavenRepo
         );
     }
 
+    /**
+     * Disable NBT API logs
+     */
     private void disableNBTAPILogs() {
         MinecraftVersion.disableBStats();
         MinecraftVersion.disableUpdateCheck();
@@ -204,6 +245,12 @@ public class CustomFishingPluginImpl extends CustomFishingPlugin {
         }
     }
 
+    /**
+     * Retrieves a YAML configuration from a file within the plugin's data folder.
+     *
+     * @param file The name of the configuration file.
+     * @return A YamlConfiguration object representing the configuration.
+     */
     @Override
     public YamlConfiguration getConfig(String file) {
         File config = new File(this.getDataFolder(), file);
@@ -211,18 +258,44 @@ public class CustomFishingPluginImpl extends CustomFishingPlugin {
         return YamlConfiguration.loadConfiguration(config);
     }
 
+    /**
+     * Checks if a specified plugin is enabled on the Bukkit server.
+     *
+     * @param plugin The name of the plugin to check.
+     * @return True if the plugin is enabled, false otherwise.
+     */
     @Override
     public boolean isHookedPluginEnabled(String plugin) {
         return Bukkit.getPluginManager().isPluginEnabled(plugin);
     }
 
+    /**
+     * Outputs a debugging message if the debug mode is enabled.
+     *
+     * @param message The debugging message to be logged.
+     */
+    @Override
+    public void debug(String message) {
+        if (!CFConfig.debug) return;
+        LogUtils.info(message);
+    }
+
+    /**
+     * Gets the CoolDownManager instance associated with the plugin.
+     *
+     * @return The CoolDownManager instance.
+     */
+    public CoolDownManager getCoolDownManager() {
+        return coolDownManager;
+    }
+
+    /**
+     * Retrieves the ProtocolManager instance used for managing packets.
+     *
+     * @return The ProtocolManager instance.
+     */
     @NotNull
     public static ProtocolManager getProtocolManager() {
         return protocolManager;
-    }
-
-    public void debug(String message) {
-        if (!Config.debug) return;
-        LogUtils.info(message);
     }
 }

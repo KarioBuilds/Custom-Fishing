@@ -1,47 +1,73 @@
+/*
+ *  Copyright (C) <2022> <XiaoMoMi>
+ *
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 package net.momirealms.customfishing.compatibility;
 
-import net.momirealms.customfishing.adventure.AdventureManagerImpl;
 import net.momirealms.customfishing.api.CustomFishingPlugin;
 import net.momirealms.customfishing.api.integration.EnchantmentInterface;
 import net.momirealms.customfishing.api.integration.LevelInterface;
 import net.momirealms.customfishing.api.integration.SeasonInterface;
 import net.momirealms.customfishing.api.manager.IntegrationManager;
 import net.momirealms.customfishing.api.util.LogUtils;
+import net.momirealms.customfishing.compatibility.block.ItemsAdderBlockImpl;
 import net.momirealms.customfishing.compatibility.enchant.AdvancedEnchantmentsImpl;
 import net.momirealms.customfishing.compatibility.enchant.VanillaEnchantmentsImpl;
+import net.momirealms.customfishing.compatibility.entity.ItemsAdderEntityImpl;
+import net.momirealms.customfishing.compatibility.entity.MythicEntityImpl;
 import net.momirealms.customfishing.compatibility.item.*;
 import net.momirealms.customfishing.compatibility.level.*;
+import net.momirealms.customfishing.compatibility.quest.BattlePassHook;
+import net.momirealms.customfishing.compatibility.quest.BetonQuestHook;
+import net.momirealms.customfishing.compatibility.quest.ClueScrollsHook;
 import net.momirealms.customfishing.compatibility.season.CustomCropsSeasonImpl;
 import net.momirealms.customfishing.compatibility.season.RealisticSeasonsImpl;
+import org.bukkit.Bukkit;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Objects;
 
 public class IntegrationManagerImpl implements IntegrationManager {
 
     private final CustomFishingPlugin plugin;
     private final HashMap<String, LevelInterface> levelPluginMap;
-    private final HashMap<String, EnchantmentInterface> enchantments;
+    private final HashMap<String, EnchantmentInterface> enchantmentPluginMap;
     private SeasonInterface seasonInterface;
 
     public IntegrationManagerImpl(CustomFishingPlugin plugin) {
         this.plugin = plugin;
         this.levelPluginMap = new HashMap<>();
-        this.enchantments = new HashMap<>();
-        this.init();
+        this.enchantmentPluginMap = new HashMap<>();
+        this.load();
     }
 
     public void disable() {
-        this.enchantments.clear();
+        this.enchantmentPluginMap.clear();
         this.levelPluginMap.clear();
     }
 
-    public void init() {
+    public void load() {
         if (plugin.isHookedPluginEnabled("ItemsAdder")) {
             plugin.getItemManager().registerItemLibrary(new ItemsAdderItemImpl());
+            plugin.getBlockManager().registerBlockLibrary(new ItemsAdderBlockImpl());
+            plugin.getEntityManager().registerEntityLibrary(new ItemsAdderEntityImpl());
             hookMessage("ItemsAdder");
         }
         if (plugin.isHookedPluginEnabled("MMOItems")) {
@@ -52,12 +78,17 @@ public class IntegrationManagerImpl implements IntegrationManager {
             plugin.getItemManager().registerItemLibrary(new OraxenItemImpl());
             hookMessage("Oraxen");
         }
+        if (plugin.isHookedPluginEnabled("Zaphkiel")) {
+            plugin.getItemManager().registerItemLibrary(new ZaphkielItemImpl());
+            hookMessage("Zaphkiel");
+        }
         if (plugin.isHookedPluginEnabled("NeigeItems")) {
             plugin.getItemManager().registerItemLibrary(new NeigeItemsItemImpl());
             hookMessage("NeigeItems");
         }
         if (plugin.isHookedPluginEnabled("MythicMobs")) {
             plugin.getItemManager().registerItemLibrary(new MythicMobsItemImpl());
+            plugin.getEntityManager().registerEntityLibrary(new MythicEntityImpl());
             hookMessage("MythicMobs");
         }
         if (plugin.isHookedPluginEnabled("EcoJobs")) {
@@ -78,7 +109,7 @@ public class IntegrationManagerImpl implements IntegrationManager {
         }
         if (plugin.isHookedPluginEnabled("mcMMO")) {
             try {
-                plugin.getItemManager().registerCustomItem("loot", "mcmmo", new McMMOBuildableItem());
+                plugin.getItemManager().registerItemLibrary(new McMMOTreasureImpl());
             } catch (ClassNotFoundException | NoSuchMethodException e) {
                 LogUtils.warn("Failed to initialize mcMMO Treasure");
             }
@@ -90,13 +121,13 @@ public class IntegrationManagerImpl implements IntegrationManager {
             hookMessage("AureliumSkills");
         }
         if (plugin.isHookedPluginEnabled("EcoEnchants")) {
-            this.enchantments.put("EcoEnchants", new VanillaEnchantmentsImpl());
+            this.enchantmentPluginMap.put("EcoEnchants", new VanillaEnchantmentsImpl());
             hookMessage("EcoEnchants");
         } else {
-            this.enchantments.put("vanilla", new VanillaEnchantmentsImpl());
+            this.enchantmentPluginMap.put("vanilla", new VanillaEnchantmentsImpl());
         }
         if (plugin.isHookedPluginEnabled("AdvancedEnchantments")) {
-            this.enchantments.put("AdvancedEnchantments", new AdvancedEnchantmentsImpl());
+            this.enchantmentPluginMap.put("AdvancedEnchantments", new AdvancedEnchantmentsImpl());
             hookMessage("AdvancedEnchantments");
         }
         if (plugin.isHookedPluginEnabled("RealisticSeasons")) {
@@ -104,8 +135,39 @@ public class IntegrationManagerImpl implements IntegrationManager {
         } else if (plugin.isHookedPluginEnabled("CustomCrops")) {
             this.seasonInterface = new CustomCropsSeasonImpl();
         }
+        if (plugin.isHookedPluginEnabled("Vault")) {
+            VaultHook.initialize();
+        }
+        if (plugin.isHookedPluginEnabled("BattlePass")){
+            BattlePassHook battlePassHook = new BattlePassHook();
+            battlePassHook.register();
+            hookMessage("BattlePass");
+        }
+        if (plugin.isHookedPluginEnabled("ClueScrolls")) {
+            ClueScrollsHook clueScrollsHook = new ClueScrollsHook();
+            clueScrollsHook.register();
+            hookMessage("ClueScrolls");
+        }
+        if (plugin.isHookedPluginEnabled("BetonQuest")) {
+            if (Objects.requireNonNull(Bukkit.getPluginManager().getPlugin("BetonQuest")).getPluginMeta().getVersion().startsWith("2")) {
+                BetonQuestHook.register();
+                hookMessage("BetonQuest");
+            }
+        }
+//        if (plugin.isHookedPluginEnabled("NotQuests")) {
+//            NotQuestHook notQuestHook = new NotQuestHook();
+//            notQuestHook.register();
+//            hookMessage("NotQuests");
+//        }
     }
 
+    /**
+     * Registers a level plugin with the specified name.
+     *
+     * @param plugin The name of the level plugin.
+     * @param level The implementation of the LevelInterface.
+     * @return true if the registration was successful, false if the plugin name is already registered.
+     */
     @Override
     public boolean registerLevelPlugin(String plugin, LevelInterface level) {
         if (levelPluginMap.containsKey(plugin)) return false;
@@ -113,46 +175,100 @@ public class IntegrationManagerImpl implements IntegrationManager {
         return true;
     }
 
+    /**
+     * Unregisters a level plugin with the specified name.
+     *
+     * @param plugin The name of the level plugin to unregister.
+     * @return true if the unregistration was successful, false if the plugin name is not found.
+     */
     @Override
     public boolean unregisterLevelPlugin(String plugin) {
         return levelPluginMap.remove(plugin) != null;
     }
 
+    /**
+     * Registers an enchantment provided by a plugin.
+     *
+     * @param plugin      The name of the plugin providing the enchantment.
+     * @param enchantment The enchantment to register.
+     * @return true if the registration was successful, false if the enchantment name is already in use.
+     */
     @Override
     public boolean registerEnchantment(String plugin, EnchantmentInterface enchantment) {
-        if (enchantments.containsKey(plugin)) return false;
-        enchantments.put(plugin, enchantment);
+        if (enchantmentPluginMap.containsKey(plugin)) return false;
+        enchantmentPluginMap.put(plugin, enchantment);
         return true;
     }
 
+    /**
+     * Unregisters an enchantment provided by a plugin.
+     *
+     * @param plugin The name of the plugin providing the enchantment.
+     * @return true if the enchantment was successfully unregistered, false if the enchantment was not found.
+     */
     @Override
     public boolean unregisterEnchantment(String plugin) {
-        return enchantments.remove(plugin) != null;
+        return enchantmentPluginMap.remove(plugin) != null;
     }
 
     private void hookMessage(String plugin) {
-        AdventureManagerImpl.getInstance().sendConsoleMessage("[CustomFishing] <green>" + plugin + "</green> hooked!");
+        LogUtils.info( plugin + " hooked!");
     }
 
+    /**
+     * Get the LevelInterface provided by a plugin.
+     *
+     * @param plugin The name of the plugin providing the LevelInterface.
+     * @return The LevelInterface provided by the specified plugin, or null if the plugin is not registered.
+     */
     @Override
-    public LevelInterface getLevelHook(String plugin) {
+    @Nullable
+    public LevelInterface getLevelPlugin(String plugin) {
         return levelPluginMap.get(plugin);
     }
 
+    /**
+     * Get an enchantment plugin by its plugin name.
+     *
+     * @param plugin The name of the enchantment plugin.
+     * @return The enchantment plugin interface, or null if not found.
+     */
+    @Override
+    @Nullable
+    public EnchantmentInterface getEnchantmentPlugin(String plugin) {
+        return enchantmentPluginMap.get(plugin);
+    }
+
+    /**
+     * Get a list of enchantment keys with level applied to the given ItemStack.
+     *
+     * @param itemStack The ItemStack to check for enchantments.
+     * @return A list of enchantment names applied to the ItemStack.
+     */
     @Override
     public List<String> getEnchantments(ItemStack itemStack) {
         ArrayList<String> list = new ArrayList<>();
-        for (EnchantmentInterface enchantmentInterface : enchantments.values()) {
+        for (EnchantmentInterface enchantmentInterface : enchantmentPluginMap.values()) {
             list.addAll(enchantmentInterface.getEnchants(itemStack));
         }
         return list;
     }
 
+    /**
+     * Get the current season interface, if available.
+     *
+     * @return The current season interface, or null if not available.
+     */
     @Nullable
     public SeasonInterface getSeasonInterface() {
         return seasonInterface;
     }
 
+    /**
+     * Set the current season interface.
+     *
+     * @param season The season interface to set.
+     */
     @Override
     public void setSeasonInterface(SeasonInterface season) {
         this.seasonInterface = season;

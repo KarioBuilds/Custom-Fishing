@@ -22,7 +22,14 @@ import net.momirealms.customfishing.adventure.AdventureManagerImpl;
 import net.momirealms.customfishing.api.CustomFishingPlugin;
 import net.momirealms.customfishing.api.common.Key;
 import net.momirealms.customfishing.api.common.Pair;
+import net.momirealms.customfishing.api.common.Tuple;
 import net.momirealms.customfishing.api.manager.ItemManager;
+import net.momirealms.customfishing.api.manager.RequirementManager;
+import net.momirealms.customfishing.api.mechanic.GlobalSettings;
+import net.momirealms.customfishing.api.mechanic.action.Action;
+import net.momirealms.customfishing.api.mechanic.action.ActionTrigger;
+import net.momirealms.customfishing.api.mechanic.condition.Condition;
+import net.momirealms.customfishing.api.mechanic.effect.EffectCarrier;
 import net.momirealms.customfishing.api.mechanic.item.BuildableItem;
 import net.momirealms.customfishing.api.mechanic.item.ItemBuilder;
 import net.momirealms.customfishing.api.mechanic.item.ItemLibrary;
@@ -31,9 +38,9 @@ import net.momirealms.customfishing.api.util.LogUtils;
 import net.momirealms.customfishing.compatibility.item.CustomFishingItemImpl;
 import net.momirealms.customfishing.compatibility.item.VanillaItemImpl;
 import net.momirealms.customfishing.compatibility.papi.PlaceholderManagerImpl;
-import net.momirealms.customfishing.setting.Config;
+import net.momirealms.customfishing.setting.CFConfig;
+import net.momirealms.customfishing.util.ItemUtils;
 import net.momirealms.customfishing.util.NBTUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -41,9 +48,19 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.InventoryPickupItemEvent;
+import org.bukkit.event.inventory.PrepareAnvilEvent;
+import org.bukkit.event.player.PlayerAttemptPickupItemEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemConsumeEvent;
+import org.bukkit.event.player.PlayerItemMendEvent;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.util.Vector;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -52,7 +69,7 @@ import java.io.File;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
-public class ItemManagerImpl implements ItemManager {
+public class ItemManagerImpl implements ItemManager, Listener {
 
     private static ItemManager instance;
     private final CustomFishingPlugin plugin;
@@ -70,10 +87,11 @@ public class ItemManagerImpl implements ItemManager {
 
     public void load() {
         this.loadItemsFromPluginFolder();
-        AdventureManagerImpl.getInstance().sendMessageWithPrefix(Bukkit.getConsoleSender(), "<white>Loaded <green>" + buildableItemMap.size() + " <white>items.");
+        Bukkit.getPluginManager().registerEvents(this, plugin);
     }
 
     public void unload() {
+        HandlerList.unregisterAll(this);
         HashMap<Key, BuildableItem> tempMap = new HashMap<>(this.buildableItemMap);
         this.buildableItemMap.clear();
         for (Map.Entry<Key, BuildableItem> entry : tempMap.entrySet()) {
@@ -83,6 +101,11 @@ public class ItemManagerImpl implements ItemManager {
         }
     }
 
+    /**
+     * Get a set of all item keys in the CustomFishing plugin.
+     *
+     * @return A set of item keys.
+     */
     @Override
     public Set<Key> getAllItemsKey() {
         return buildableItemMap.keySet();
@@ -96,7 +119,7 @@ public class ItemManagerImpl implements ItemManager {
     @SuppressWarnings("DuplicatedCode")
     public void loadItemsFromPluginFolder() {
         Deque<File> fileDeque = new ArrayDeque<>();
-        for (String type : List.of("loots", "baits", "rods", "utils")) {
+        for (String type : List.of("item", "bait", "rod", "util", "hook")) {
             File typeFolder = new File(plugin.getDataFolder() + File.separator + "contents" + File.separator + type);
             if (!typeFolder.exists()) {
                 if (!typeFolder.mkdirs()) return;
@@ -110,8 +133,8 @@ public class ItemManagerImpl implements ItemManager {
                 for (File subFile : files) {
                     if (subFile.isDirectory()) {
                         fileDeque.push(subFile);
-                    } else if (subFile.isFile()) {
-                        this.loadSingleFile(subFile, StringUtils.chop(type));
+                    } else if (subFile.isFile() && subFile.getName().endsWith(".yml")) {
+                        this.loadSingleFile(subFile, type);
                     }
                 }
             }
@@ -133,24 +156,29 @@ public class ItemManagerImpl implements ItemManager {
         }
     }
 
-    @Override
-    public boolean registerCustomItem(String namespace, String value, BuildableItem buildableItem) {
-        Key key = Key.of(namespace, value);
-        if (buildableItemMap.containsKey(key)) return false;
-        buildableItemMap.put(key, buildableItem);
-        return true;
-    }
-
-    @Override
-    public boolean unregisterCustomItem(String namespace, String value) {
-        return buildableItemMap.remove(Key.of(namespace, value)) != null;
-    }
-
+    /**
+     * Build an ItemStack with a specified namespace and value for a player.
+     *
+     * @param player   The player for whom the ItemStack is being built.
+     * @param namespace The namespace of the item.
+     * @param value    The value of the item.
+     * @return The constructed ItemStack.
+     */
     @Override
     public ItemStack build(Player player, String namespace, String value) {
         return build(player, namespace, value, new HashMap<>());
     }
 
+    /**
+     * Build an ItemStack with a specified namespace and value, replacing placeholders,
+     * for a player.
+     *
+     * @param player      The player for whom the ItemStack is being built.
+     * @param namespace   The namespace of the item.
+     * @param value       The value of the item.
+     * @param placeholders The placeholders to replace in the item's attributes.
+     * @return The constructed ItemStack, or null if the item doesn't exist.
+     */
     @Override
     public ItemStack build(Player player, String namespace, String value, Map<String, String> placeholders) {
         BuildableItem buildableItem = buildableItemMap.get(Key.of(namespace, value));
@@ -158,21 +186,43 @@ public class ItemManagerImpl implements ItemManager {
         return buildableItem.build(player, placeholders);
     }
 
+    /**
+     * Build an ItemStack using an ItemBuilder for a player.
+     *
+     * @param player      The player for whom the ItemStack is being built.
+     * @param builder     The ItemBuilder used to construct the ItemStack.
+     * @return The constructed ItemStack.
+     */
     @NotNull
     @Override
     public ItemStack build(Player player, ItemBuilder builder) {
         return build(player, builder, new HashMap<>());
     }
 
+    /**
+     * Retrieve a BuildableItem by its namespace and value.
+     *
+     * @param namespace The namespace of the BuildableItem.
+     * @param value     The value of the BuildableItem.
+     * @return The BuildableItem with the specified namespace and value, or null if not found.
+     */
     @Override
     @Nullable
     public BuildableItem getBuildableItem(String namespace, String value) {
         return buildableItemMap.get(Key.of(namespace, value));
     }
 
+    /**
+     * Get the item ID associated with the given ItemStack by checking all available item libraries.
+     * The detection order is determined by the configuration.
+     *
+     * @param itemStack The ItemStack to retrieve the item ID from.
+     * @return The item ID or "AIR" if not found or if the ItemStack is null or empty.
+     */
+    @NotNull
     @Override
-    public String getAnyItemID(ItemStack itemStack) {
-        for (String plugin : Config.itemDetectOrder) {
+    public String getAnyPluginItemID(ItemStack itemStack) {
+        for (String plugin : CFConfig.itemDetectOrder) {
             ItemLibrary itemLibrary = itemLibraryMap.get(plugin);
             if (itemLibrary != null) {
                 String id = itemLibrary.getItemID(itemStack);
@@ -182,11 +232,18 @@ public class ItemManagerImpl implements ItemManager {
             }
         }
         // should not reach this because vanilla library would always work
-        return null;
+        return "AIR";
     }
 
+    /**
+     * Build an ItemStack for a player based on the provided item ID.
+     *
+     * @param player The player for whom the ItemStack is being built.
+     * @param id     The item ID, which may include a namespace (e.g., "namespace:id").
+     * @return The constructed ItemStack or null if the ID is not valid.
+     */
     @Override
-    public ItemStack buildAnyItemByID(Player player, String id) {
+    public ItemStack buildAnyPluginItemByID(Player player, String id) {
         if (id.contains(":")) {
             String[] split = id.split(":", 2);
             return itemLibraryMap.get(split[0]).buildItem(player, split[1]);
@@ -195,9 +252,28 @@ public class ItemManagerImpl implements ItemManager {
         }
     }
 
+    /**
+     * Checks if the provided ItemStack is a custom fishing item
+     *
+     * @param itemStack The ItemStack to check.
+     * @return True if the ItemStack is a custom fishing item; otherwise, false.
+     */
+    @Override
+    public boolean isCustomFishingItem(ItemStack itemStack) {
+        if (itemStack == null || itemStack.getType() == Material.AIR) return false;
+        NBTItem nbtItem = new NBTItem(itemStack);
+        return nbtItem.hasTag("CustomFishing") && !nbtItem.getCompound("CustomFishing").getString("id").equals("");
+    }
+
+    /**
+     * Get the item ID associated with the given ItemStack, if available.
+     *
+     * @param itemStack The ItemStack to retrieve the item ID from.
+     * @return The item ID or null if not found or if the ItemStack is null or empty.
+     */
     @Nullable
     @Override
-    public String getItemID(ItemStack itemStack) {
+    public String getCustomFishingItemID(ItemStack itemStack) {
         if (itemStack == null || itemStack.getType() == Material.AIR) return null;
         NBTItem nbtItem = new NBTItem(itemStack);
         NBTCompound cfCompound = nbtItem.getCompound("CustomFishing");
@@ -205,11 +281,19 @@ public class ItemManagerImpl implements ItemManager {
         return cfCompound.getString("id");
     }
 
+    /**
+     * Create a CFBuilder instance for an item configuration section
+     *
+     * @param section The configuration section containing item settings.
+     * @param type The type of the item (e.g., "rod", "bait").
+     * @param id The unique identifier for the item.
+     * @return A CFBuilder instance representing the configured item, or null if the section is null.
+     */
     @Nullable
     @Override
     public CFBuilder getItemBuilder(ConfigurationSection section, String type, String id) {
         if (section == null) return null;
-        String material = section.getString("material", "PAPER");
+        String material = section.getString("material", type.equals("rod") ? "FISHING_ROD" : "PAPER");
         CFBuilder itemCFBuilder;
         if (material.contains(":")) {
             String[] split = material.split(":", 2);
@@ -228,17 +312,28 @@ public class ItemManagerImpl implements ItemManager {
                 .itemFlag(section.getStringList("item-flags").stream().map(flag -> ItemFlag.valueOf(flag.toUpperCase())).toList())
                 .enchantment(getEnchantmentPair(section.getConfigurationSection("enchantments")), false)
                 .enchantment(getEnchantmentPair(section.getConfigurationSection("stored-enchantments")), true)
+                .randomEnchantments(getEnchantmentTuple(section.getConfigurationSection("random-enchantments")), false)
+                .randomEnchantments(getEnchantmentTuple(section.getConfigurationSection("random-stored-enchantments")), true)
                 .tag(section.getBoolean("tag", true), type, id)
                 .randomDamage(section.getBoolean("random-durability", false))
                 .unbreakable(section.getBoolean("unbreakable", false))
-                .preventGrabbing(section.getBoolean("prevent-grabbing", false))
+                .preventGrabbing(section.getBoolean("prevent-grabbing", true))
                 .head(section.getString("head64"))
                 .name(section.getString("display.name"))
                 .lore(section.getStringList("display.lore"));
         return itemCFBuilder;
     }
 
+    /**
+     * Build an ItemStack using the provided ItemBuilder, player, and placeholders.
+     *
+     * @param player       The player for whom the item is being built.
+     * @param builder      The ItemBuilder that defines the item's properties.
+     * @param placeholders A map of placeholders and their corresponding values to be applied to the item.
+     * @return The constructed ItemStack.
+     */
     @Override
+    @NotNull
     public ItemStack build(Player player, ItemBuilder builder, Map<String, String> placeholders) {
         ItemStack temp = itemLibraryMap.get(builder.getLibrary()).buildItem(player, builder.getId());
         temp.setAmount(builder.getAmount());
@@ -246,9 +341,16 @@ public class ItemManagerImpl implements ItemManager {
         for (ItemBuilder.ItemPropertyEditor editor : builder.getEditors()) {
             editor.edit(player, nbtItem, placeholders);
         }
+        ItemUtils.updateNBTItemLore(nbtItem);
         return nbtItem.getItem();
     }
 
+    /**
+     * Register an item library.
+     *
+     * @param itemLibrary The item library to register.
+     * @return True if the item library was successfully registered, false if it already exists.
+     */
     @Override
     public boolean registerItemLibrary(ItemLibrary itemLibrary) {
         if (itemLibraryMap.containsKey(itemLibrary.identification())) return false;
@@ -256,21 +358,31 @@ public class ItemManagerImpl implements ItemManager {
         return true;
     }
 
+    /**
+     * Unregister an item library.
+     *
+     * @param identification The item library to unregister.
+     * @return True if the item library was successfully unregistered, false if it doesn't exist.
+     */
     @Override
-    public boolean unRegisterItemLibrary(ItemLibrary itemLibrary) {
-        return itemLibraryMap.remove(itemLibrary.identification(), itemLibrary);
+    public boolean unRegisterItemLibrary(String identification) {
+        return itemLibraryMap.remove(identification) != null;
     }
 
+    /**
+     * Drops an item based on the provided loot, applying velocity from a hook location to a player location.
+     *
+     * @param player         The player for whom the item is intended.
+     * @param hookLocation   The location where the item will initially drop.
+     * @param playerLocation The target location towards which the item's velocity is applied.
+     * @param id             The loot object representing the item to be dropped.
+     * @param args           A map of placeholders for item customization.
+     */
     @Override
-    public boolean unRegisterItemLibrary(String itemLibrary) {
-        return itemLibraryMap.remove(itemLibrary) != null;
-    }
-
-    @Override
-    public void dropItem(Player player, Location hookLocation, Location playerLocation, Loot loot, Map<String, String> args) {
-        ItemStack item = build(player, "loot", loot.getID(), args);
+    public void dropItem(Player player, Location hookLocation, Location playerLocation, String id, Map<String, String> args) {
+        ItemStack item = build(player, "item", id, args);
         if (item == null) {
-            LogUtils.warn(String.format("Item %s not exists", loot.getID()));
+            LogUtils.warn(String.format("Item %s not exists", id));
             return;
         }
         if (item.getType() == Material.AIR) {
@@ -278,16 +390,59 @@ public class ItemManagerImpl implements ItemManager {
         }
         Entity itemEntity = hookLocation.getWorld().dropItem(hookLocation, item);
         Vector vector = playerLocation.subtract(hookLocation).toVector().multiply(0.105);
-        vector = vector.setY((vector.getY() + 0.2) * 1.18);
+        vector = vector.setY((vector.getY() + 0.22) * 1.18);
         itemEntity.setVelocity(vector);
     }
 
+    /**
+     * Drops an item entity at the specified location and applies velocity towards another location.
+     *
+     * @param hookLocation   The location where the item will initially drop.
+     * @param playerLocation The target location towards which the item's velocity is applied.
+     * @param itemStack      The item stack to be dropped as an entity.
+     */
     @Override
     public void dropItem(Location hookLocation, Location playerLocation, ItemStack itemStack) {
         Entity itemEntity = hookLocation.getWorld().dropItem(hookLocation, itemStack);
         Vector vector = playerLocation.subtract(hookLocation).toVector().multiply(0.105);
-        vector = vector.setY((vector.getY() + 0.2) * 1.18);
+        vector = vector.setY((vector.getY() + 0.22) * 1.18);
         itemEntity.setVelocity(vector);
+    }
+
+    /**
+     * Decreases the durability of an ItemStack by a specified amount and optionally updates its lore.
+     *
+     * @param itemStack   The ItemStack to modify.
+     * @param amount      The amount by which to decrease the durability.
+     * @param updateLore  Whether to update the lore of the ItemStack.
+     */
+    @Override
+    public void decreaseDurability(ItemStack itemStack, int amount, boolean updateLore) {
+        ItemUtils.decreaseDurability(itemStack, amount, updateLore);
+    }
+
+    /**
+     * Increases the durability of an ItemStack by a specified amount and optionally updates its lore.
+     *
+     * @param itemStack   The ItemStack to modify.
+     * @param amount      The amount by which to increase the durability.
+     * @param updateLore  Whether to update the lore of the ItemStack.
+     */
+    @Override
+    public void increaseDurability(ItemStack itemStack, int amount, boolean updateLore) {
+        ItemUtils.increaseDurability(itemStack, amount, updateLore);
+    }
+
+    /**
+     * Sets the durability of an ItemStack to a specific amount and optionally updates its lore.
+     *
+     * @param itemStack   The ItemStack to modify.
+     * @param amount      The new durability value.
+     * @param updateLore  Whether to update the lore of the ItemStack.
+     */
+    @Override
+    public void setDurability(ItemStack itemStack, int amount, boolean updateLore) {
+        ItemUtils.setDurability(itemStack, amount, updateLore);
     }
 
     @NotNull
@@ -295,7 +450,26 @@ public class ItemManagerImpl implements ItemManager {
         List<Pair<String, Short>> list = new ArrayList<>();
         if (section == null) return list;
         for (Map.Entry<String, Object> entry : section.getValues(false).entrySet()) {
-            list.add(Pair.of(entry.getKey(), (short) entry.getValue()));
+            if (entry.getValue() instanceof Integer integer) {
+                list.add(Pair.of(entry.getKey(), Short.valueOf(String.valueOf(integer))));
+            }
+        }
+        return list;
+    }
+
+    @NotNull
+    private List<Tuple<Double, String, Short>> getEnchantmentTuple(ConfigurationSection section) {
+        List<Tuple<Double, String, Short>> list = new ArrayList<>();
+        if (section == null) return list;
+        for (Map.Entry<String, Object> entry : section.getValues(false).entrySet()) {
+            if (entry.getValue() instanceof ConfigurationSection inner) {
+                Tuple<Double, String, Short> tuple = Tuple.of(
+                        inner.getDouble("chance"),
+                        inner.getString("enchant"),
+                        Short.valueOf(String.valueOf(inner.getInt("level")))
+                );
+                list.add(tuple);
+            }
         }
         return list;
     }
@@ -440,6 +614,24 @@ public class ItemManagerImpl implements ItemManager {
         }
 
         @Override
+        public ItemBuilder randomEnchantments(List<Tuple<Double, String, Short>> enchantments, boolean store) {
+            if (enchantments.size() == 0) return this;
+            editors.put("random-enchantment", (player, nbtItem, placeholders) -> {
+                NBTCompoundList list = nbtItem.getCompoundList(store ? "StoredEnchantments" : "Enchantments");
+                HashSet<String> ids = new HashSet<>();
+                for (Tuple<Double, String, Short> pair : enchantments) {
+                    if (Math.random() < pair.getLeft() && !ids.contains(pair.getMid())) {
+                        NBTCompound nbtCompound = list.addCompound();
+                        nbtCompound.setString("id", pair.getMid());
+                        nbtCompound.setShort("lvl", pair.getRight());
+                        ids.add(pair.getMid());
+                    }
+                }
+            });
+            return this;
+        }
+
+        @Override
         public ItemBuilder maxDurability(int max) {
             if (max == 0) return this;
             editors.put("durability", (player, nbtItem, placeholders) -> {
@@ -461,7 +653,7 @@ public class ItemManagerImpl implements ItemManager {
                     placeholders.put("{bonus}", String.format("%.2f", bonus));
                 }
                 float size = Float.parseFloat(placeholders.getOrDefault("{size}", "0"));
-                double price = CustomFishingPlugin.get().getMarketManager().getPrice(
+                double price = CustomFishingPlugin.get().getMarketManager().getFishPrice(
                         base,
                         bonus,
                         size
@@ -528,6 +720,8 @@ public class ItemManagerImpl implements ItemManager {
                         int dur = ThreadLocalRandom.current().nextInt(i);
                         cfCompound.setInteger("cur_dur", dur);
                         nbtItem.setInteger("Damage", (int) (nbtItem.getItem().getType().getMaxDurability() * ((double) dur / i)));
+                    } else {
+                        nbtItem.setInteger("Damage", ThreadLocalRandom.current().nextInt(nbtItem.getItem().getType().getMaxDurability()));
                     }
                 } else {
                     nbtItem.setInteger("Damage", ThreadLocalRandom.current().nextInt(nbtItem.getItem().getType().getMaxDurability()));
@@ -569,67 +763,91 @@ public class ItemManagerImpl implements ItemManager {
         }
     }
 
-    public static int giveCertainAmountOfItem(Player player, ItemStack itemStack, int amount) {
-        PlayerInventory inventory = player.getInventory();
-        String metaStr = itemStack.getItemMeta().getAsString();
-        int maxStackSize = itemStack.getMaxStackSize();
-
-        if (amount > maxStackSize * 100) {
-            LogUtils.warn("Detected too many items spawning. Lowering the amount to " + (maxStackSize * 100));
-            amount = maxStackSize * 100;
+    @EventHandler
+    public void onPickUp(PlayerAttemptPickupItemEvent event) {
+        if (event.isCancelled()) return;
+        ItemStack itemStack = event.getItem().getItemStack();
+        NBTItem nbtItem = new NBTItem(itemStack);
+        if (!nbtItem.hasTag("owner")) return;
+        if (!Objects.equals(nbtItem.getString("owner"), event.getPlayer().getName())) {
+            event.setCancelled(true);
+        } else {
+            nbtItem.removeKey("owner");
+            itemStack.setItemMeta(nbtItem.getItem().getItemMeta());
         }
+    }
 
-        int actualAmount = amount;
+    @EventHandler
+    public void onMove(InventoryPickupItemEvent event) {
+        if (event.isCancelled()) return;
+        ItemStack itemStack = event.getItem().getItemStack();
+        NBTItem nbtItem = new NBTItem(itemStack);
+        if (!nbtItem.hasTag("owner")) return;
+        nbtItem.removeKey("owner");
+        itemStack.setItemMeta(nbtItem.getItem().getItemMeta());
+    }
 
-        for (ItemStack other : inventory.getStorageContents()) {
-            if (other != null) {
-                if (other.getType() == itemStack.getType() && other.getItemMeta().getAsString().equals(metaStr)) {
-                    if (other.getAmount() < maxStackSize) {
-                        int delta = maxStackSize - other.getAmount();
-                        if (amount > delta) {
-                            other.setAmount(maxStackSize);
-                            amount -= delta;
-                        } else {
-                            other.setAmount(amount + other.getAmount());
-                            return actualAmount;
-                        }
-                    }
-                }
-            }
+
+    @EventHandler
+    public void onConsumeItem(PlayerItemConsumeEvent event) {
+        if (event.isCancelled()) return;
+        ItemStack itemStack = event.getItem();
+        String id = getAnyPluginItemID(itemStack);
+        Loot loot = plugin.getLootManager().getLoot(id);
+        if (loot != null) {
+            Condition condition = new Condition(event.getPlayer());
+            GlobalSettings.triggerLootActions(ActionTrigger.CONSUME, condition);
+            loot.triggerActions(ActionTrigger.CONSUME, condition);
         }
+    }
 
-        if (amount > 0) {
-            for (ItemStack other : inventory.getStorageContents()) {
-                if (other == null) {
-                    if (amount > maxStackSize) {
-                        amount -= maxStackSize;
-                        ItemStack cloned = itemStack.clone();
-                        cloned.setAmount(maxStackSize);
-                        inventory.addItem(cloned);
-                    } else {
-                        ItemStack cloned = itemStack.clone();
-                        cloned.setAmount(amount);
-                        inventory.addItem(cloned);
-                        return actualAmount;
-                    }
-                }
-            }
+    @EventHandler
+    public void onRepairItem(PrepareAnvilEvent event) {
+        ItemStack result = event.getInventory().getResult();
+        if (result == null || result.getType() == Material.AIR) return;
+        NBTItem nbtItem = new NBTItem(result);
+        NBTCompound compound = nbtItem.getCompound("CustomFishing");
+        if (compound == null || !compound.hasTag("max_dur")) return;
+        if (!(result.getItemMeta() instanceof Damageable damageable)) {
+            return;
         }
+        int max_dur = compound.getInteger("max_dur");
+        compound.setInteger("cur_dur", (int) (max_dur * (1 - (double) damageable.getDamage() / result.getType().getMaxDurability())));
+        event.setResult(nbtItem.getItem());
+    }
 
-        if (amount > 0) {
-            for (int i = 0; i < amount / maxStackSize; i++) {
-                ItemStack cloned = itemStack.clone();
-                cloned.setAmount(maxStackSize);
-                player.getWorld().dropItem(player.getLocation(), cloned);
-            }
-            int left = amount % maxStackSize;
-            if (left != 0) {
-                ItemStack cloned = itemStack.clone();
-                cloned.setAmount(left);
-                player.getWorld().dropItem(player.getLocation(), cloned);
-            }
-        }
+    @EventHandler
+    public void onMending(PlayerItemMendEvent event) {
+        if (event.isCancelled()) return;
+        ItemStack itemStack = event.getItem();
+        NBTItem nbtItem = new NBTItem(itemStack);
+        NBTCompound compound = nbtItem.getCompound("CustomFishing");
+        if (compound == null) return;
+        event.setCancelled(true);
+        ItemUtils.increaseDurability(itemStack, event.getRepairAmount(), true);
+    }
 
-        return actualAmount;
+    @EventHandler
+    public void onInteractWithUtils(PlayerInteractEvent event) {
+        if (event.useItemInHand() == Event.Result.DENY)
+            return;
+        ItemStack itemStack = event.getPlayer().getInventory().getItemInMainHand();
+        if (itemStack.getType() == Material.AIR)
+            return;
+        if (event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_AIR || event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK)
+            return;
+
+        String id = getAnyPluginItemID(itemStack);
+        EffectCarrier carrier = plugin.getEffectManager().getEffectCarrier("util", id);
+        if (carrier == null)
+            return;
+        Condition condition = new Condition(event.getPlayer());
+        if (!RequirementManager.isRequirementMet(condition, carrier.getRequirements()))
+            return;
+        Action[] actions = carrier.getActions(ActionTrigger.INTERACT);
+        if (actions != null)
+            for (Action action : actions) {
+                action.trigger(condition);
+            }
     }
 }

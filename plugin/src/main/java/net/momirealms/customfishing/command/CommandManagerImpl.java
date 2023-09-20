@@ -21,14 +21,18 @@ import dev.jorel.commandapi.CommandAPI;
 import dev.jorel.commandapi.CommandAPIBukkitConfig;
 import dev.jorel.commandapi.CommandAPICommand;
 import dev.jorel.commandapi.CommandPermission;
+import dev.jorel.commandapi.arguments.EntitySelectorArgument;
 import net.momirealms.customfishing.CustomFishingPluginImpl;
 import net.momirealms.customfishing.adventure.AdventureManagerImpl;
 import net.momirealms.customfishing.api.CustomFishingPlugin;
 import net.momirealms.customfishing.api.manager.CommandManager;
-import net.momirealms.customfishing.command.sub.CompetitionCommand;
-import net.momirealms.customfishing.command.sub.FishingBagCommand;
-import net.momirealms.customfishing.command.sub.ItemCommand;
-import net.momirealms.customfishing.setting.Locale;
+import net.momirealms.customfishing.api.util.LogUtils;
+import net.momirealms.customfishing.command.sub.*;
+import net.momirealms.customfishing.setting.CFLocale;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.Inventory;
+
+import java.util.Collection;
 
 public class CommandManagerImpl implements CommandManager {
 
@@ -40,27 +44,39 @@ public class CommandManagerImpl implements CommandManager {
     }
 
     @Override
-    public void loadCommands() {
+    public void load() {
         new CommandAPICommand("customfishing")
                 .withAliases("cfishing")
                 .withPermission(CommandPermission.OP)
                 .withSubcommands(
                         getReloadCommand(),
+                        getMarketCommand(),
+                        getAboutCommand(),
+                        DataCommand.INSTANCE.getDataCommand(),
                         CompetitionCommand.INSTANCE.getCompetitionCommand(),
-                        ItemCommand.INSTANCE.getItemCommand()
+                        ItemCommand.INSTANCE.getItemCommand(),
+                        DebugCommand.INSTANCE.getDebugCommand(),
+                        StatisticsCommand.INSTANCE.getStatisticsCommand()
                 )
                 .register();
 
-        new CommandAPICommand("sellfish")
-                .withPermission("customfishing.sellfish")
-                .executesPlayer((player, args) -> {
-                    plugin.getMarketManager().openMarketGUI(player);
-                })
-                .register();
+        if (plugin.getMarketManager().isEnable()) {
+            new CommandAPICommand("sellfish")
+                    .withPermission("customfishing.sellfish")
+                    .executesPlayer((player, args) -> {
+                        if (plugin.getMarketManager().isEnable())
+                            plugin.getMarketManager().openMarketGUI(player);
+                    })
+                    .register();
+        }
 
-        if (plugin.getBagManager().isBagEnabled()) {
+        if (plugin.getBagManager().isEnabled()) {
             FishingBagCommand.INSTANCE.getBagCommand().register();
         }
+    }
+
+    @Override
+    public void unload() {
     }
 
     private CommandAPICommand getReloadCommand() {
@@ -68,7 +84,54 @@ public class CommandManagerImpl implements CommandManager {
                 .executes((sender, args) -> {
                     long time = System.currentTimeMillis();
                     plugin.reload();
-                    AdventureManagerImpl.getInstance().sendMessageWithPrefix(sender, Locale.MSG_Reload.replace("{time}", String.valueOf(System.currentTimeMillis()-time)));
+                    AdventureManagerImpl.getInstance().sendMessageWithPrefix(sender, CFLocale.MSG_Reload.replace("{time}", String.valueOf(System.currentTimeMillis()-time)));
                 });
+    }
+
+    @SuppressWarnings("unchecked")
+    private CommandAPICommand getMarketCommand() {
+        CommandAPICommand command = new CommandAPICommand("open");
+        if (plugin.getMarketManager().isEnable()) {
+            command.withSubcommand(
+                    new CommandAPICommand("market")
+                    .withArguments(new EntitySelectorArgument.ManyPlayers("player"))
+                    .executes((sender, args) -> {
+                        Collection<Player> players = (Collection<Player>) args.get("player");
+                        assert players != null;
+                        for (Player player : players) {
+                            plugin.getMarketManager().openMarketGUI(player);
+                            AdventureManagerImpl.getInstance().sendMessageWithPrefix(sender, CFLocale.MSG_Market_GUI_Open.replace("{player}", player.getName()));
+                        }
+                    }));
+        }
+        if (plugin.getBagManager().isEnabled()) {
+            command.withSubcommand(
+                    new CommandAPICommand("bag")
+                    .withArguments(new EntitySelectorArgument.ManyPlayers("player"))
+                    .executes((sender, args) -> {
+                        Collection<Player> players = (Collection<Player>) args.get("player");
+                        assert players != null;
+                        for (Player player : players) {
+                            Inventory inventory = plugin.getBagManager().getOnlineBagInventory(player.getUniqueId());
+                            if (inventory != null) {
+                                player.openInventory(inventory);
+                                AdventureManagerImpl.getInstance().sendMessageWithPrefix(sender, CFLocale.MSG_Fishing_Bag_Open.replace("{player}", player.getName()));
+                            } else {
+                                LogUtils.warn("Player " + player.getName() + "'s bag data has not been loaded.");
+                            }
+                        }
+                    }));
+        }
+        return command;
+    }
+
+    private CommandAPICommand getAboutCommand() {
+        return new CommandAPICommand("about").executes((sender, args) -> {
+            AdventureManagerImpl.getInstance().sendMessage(sender, "<#00BFFF>\uD83C\uDFA3 CustomFishing <gray>- <#87CEEB>" + CustomFishingPlugin.getInstance().getVersionManager().getPluginVersion());
+            AdventureManagerImpl.getInstance().sendMessage(sender, "<#B0C4DE>A fishing plugin that provides innovative mechanics and powerful loot system");
+            AdventureManagerImpl.getInstance().sendMessage(sender, "<#DA70D6>\uD83E\uDDEA Author: <#FFC0CB>XiaoMoMi");
+            AdventureManagerImpl.getInstance().sendMessage(sender, "<#FF7F50>\uD83D\uDD25 Contributors: <#FFA07A>0ft3n<white>, <#FFA07A>Peng_Lx<white>, <#FFA07A>Masaki<white>, <#FFA07A>g2213swo");
+            AdventureManagerImpl.getInstance().sendMessage(sender, "<#FFD700>⭐ <click:open_url:https://mo-mi.gitbook.io/xiaomomi-plugins/plugin-wiki/customfishing>Document</click> <#A9A9A9>| <#FAFAD2>⛏ <click:open_url:https://github.com/Xiao-MoMi/Custom-Fishing>Github</click> <#A9A9A9>| <#48D1CC>\uD83D\uDD14 <click:open_url:https://polymart.org/resource/customfishing.2723>Polymart</click>");
+        });
     }
 }

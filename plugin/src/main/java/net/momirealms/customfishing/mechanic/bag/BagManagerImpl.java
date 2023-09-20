@@ -17,98 +17,148 @@
 
 package net.momirealms.customfishing.mechanic.bag;
 
-import com.comphenix.protocol.PacketType;
-import com.comphenix.protocol.events.PacketAdapter;
-import com.comphenix.protocol.events.PacketContainer;
-import com.comphenix.protocol.events.PacketEvent;
-import com.comphenix.protocol.reflect.StructureModifier;
-import com.comphenix.protocol.wrappers.WrappedChatComponent;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.ScoreComponent;
-import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
 import net.momirealms.customfishing.CustomFishingPluginImpl;
-import net.momirealms.customfishing.adventure.AdventureManagerImpl;
 import net.momirealms.customfishing.api.CustomFishingPlugin;
+import net.momirealms.customfishing.api.data.user.OfflineUser;
 import net.momirealms.customfishing.api.manager.BagManager;
+import net.momirealms.customfishing.api.manager.EffectManager;
 import net.momirealms.customfishing.api.mechanic.bag.FishingBagHolder;
-import net.momirealms.customfishing.api.util.LogUtils;
-import net.momirealms.customfishing.compatibility.papi.PlaceholderManagerImpl;
-import net.momirealms.customfishing.setting.Config;
+import net.momirealms.customfishing.setting.CFConfig;
 import org.bukkit.Bukkit;
-import org.bukkit.OfflinePlayer;
+import org.bukkit.Material;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
-import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
-public class BagManagerImpl implements BagManager {
+public class BagManagerImpl implements BagManager, Listener {
 
     private final CustomFishingPlugin plugin;
-    private final ConcurrentHashMap<UUID, FishingBagHolder> bagMap;
-    private final WindowPacketListener windowPacketListener;
+    private final HashMap<UUID, OfflineUser> tempEditMap;
 
     public BagManagerImpl(CustomFishingPluginImpl plugin) {
         this.plugin = plugin;
-        this.bagMap = new ConcurrentHashMap<>();
-        this.windowPacketListener = new WindowPacketListener();
+        this.tempEditMap = new HashMap<>();
     }
 
     @Override
-    public boolean isBagEnabled() {
-        return Config.enableFishingBag;
+    public boolean isEnabled() {
+        return CFConfig.enableFishingBag;
     }
 
     public void load() {
-        CustomFishingPluginImpl.getProtocolManager().addPacketListener(windowPacketListener);
+        Bukkit.getPluginManager().registerEvents(this, plugin);
     }
 
     public void unload() {
-        CustomFishingPluginImpl.getProtocolManager().removePacketListener(windowPacketListener);
+        HandlerList.unregisterAll(this);
     }
 
     public void disable() {
         unload();
+        plugin.getStorageManager().getDataSource().updateManyPlayersData(tempEditMap.values(), true);
     }
 
+    /**
+     * Retrieves the online bag inventory associated with a player's UUID.
+     *
+     * @param uuid The UUID of the player for whom the bag inventory is retrieved.
+     * @return The online bag inventory if the player is online, or null if not found.
+     */
+    @Nullable
     @Override
     public Inventory getOnlineBagInventory(UUID uuid) {
         var onlinePlayer = plugin.getStorageManager().getOnlineUser(uuid);
         if (onlinePlayer == null) {
-            LogUtils.warn("Player " + uuid + "'s bag data is not loaded.");
             return null;
         }
         return onlinePlayer.getHolder().getInventory();
     }
 
-    public static class WindowPacketListener extends PacketAdapter {
+    /**
+     * Initiates the process of editing the bag inventory of an offline player by an admin.
+     *
+     * @param admin    The admin player performing the edit.
+     * @param userData The OfflineUser data of the player whose bag is being edited.
+     */
+    @Override
+    public void editOfflinePlayerBag(Player admin, OfflineUser userData) {
+        this.tempEditMap.put(admin.getUniqueId(), userData);
+        admin.openInventory(userData.getHolder().getInventory());
+    }
 
-        public WindowPacketListener() {
-            super(CustomFishingPlugin.getInstance(), PacketType.Play.Server.OPEN_WINDOW);
-        }
+    /**
+     * Handles the InventoryCloseEvent to save changes made to an offline player's bag inventory when it's closed.
+     *
+     * @param event The InventoryCloseEvent triggered when the inventory is closed.
+     */
+    @EventHandler
+    public void onInvClose(InventoryCloseEvent event) {
+        if (!(event.getInventory().getHolder() instanceof FishingBagHolder))
+            return;
+        final Player viewer = (Player) event.getPlayer();
+        OfflineUser offlineUser = tempEditMap.remove(viewer.getUniqueId());
+        if (offlineUser == null)
+            return;
+        plugin.getStorageManager().saveUserData(offlineUser, true);
+    }
 
-        @Override
-        public void onPacketSending(PacketEvent event) {
-            final PacketContainer packet = event.getPacket();
-            StructureModifier<WrappedChatComponent> wrappedChatComponentStructureModifier = packet.getChatComponents();
-            WrappedChatComponent component = wrappedChatComponentStructureModifier.getValues().get(0);
-            String windowTitleJson = component.getJson();
-            Component titleComponent = GsonComponentSerializer.gson().deserialize(windowTitleJson);
-            if (titleComponent instanceof ScoreComponent scoreComponent && scoreComponent.name().equals("bag")) {
-                HashMap<String, String> placeholders = new HashMap<>();
-                String uuidStr = scoreComponent.objective();
-                UUID uuid = UUID.fromString(uuidStr);
-                placeholders.put("{uuid}", uuidStr);
-                OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(uuid);
-                placeholders.put("{player}", Optional.ofNullable(offlinePlayer.getName()).orElse(uuidStr));
-                wrappedChatComponentStructureModifier.write(0,
-                WrappedChatComponent.fromJson(
-                GsonComponentSerializer.gson().serialize(
-                AdventureManagerImpl.getInstance().getComponentFromMiniMessage(
-                PlaceholderManagerImpl.getInstance().parse(offlinePlayer, Config.bagTitle, placeholders)
-                ))));
-            }
+    /**
+     * Handles InventoryClickEvent to prevent certain actions on the Fishing Bag inventory.
+     * This method cancels the event if specific conditions are met to restrict certain item interactions.
+     *
+     * @param event The InventoryClickEvent triggered when an item is clicked in an inventory.
+     */
+    @EventHandler
+    public void onInvClick(InventoryClickEvent event) {
+        if (event.isCancelled())
+            return;
+        if (!(event.getInventory().getHolder() instanceof FishingBagHolder))
+            return;
+        Inventory clicked = event.getClickedInventory();
+        if (clicked != event.getWhoClicked().getInventory())
+            return;
+        ItemStack clickedItem = event.getCurrentItem();
+        if (clickedItem == null || clickedItem.getType() == Material.AIR)
+            return;
+        if (CFConfig.bagWhiteListItems.contains(clickedItem.getType()))
+            return;
+        String id = plugin.getItemManager().getAnyPluginItemID(clickedItem);
+        EffectManager effectManager = plugin.getEffectManager();
+        if (effectManager.hasEffectCarrier("rod", id)
+                || effectManager.hasEffectCarrier("bait", id)
+                || effectManager.hasEffectCarrier("util", id)
+                || effectManager.hasEffectCarrier("hook", id)
+        ) {
+            return;
         }
+        if (CFConfig.bagStoreLoots && plugin.getLootManager().getLoot(id) != null)
+            return;
+        event.setCancelled(true);
+    }
+
+    /**
+     * Event handler for the PlayerQuitEvent.
+     * This method is triggered when a player quits the server.
+     * It checks if the player was in the process of editing an offline player's bag inventory,
+     * and if so, saves the offline player's data if necessary.
+     *
+     * @param event The PlayerQuitEvent triggered when a player quits.
+     */
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        OfflineUser offlineUser = tempEditMap.remove(event.getPlayer().getUniqueId());
+        if (offlineUser == null)
+            return;
+        plugin.getStorageManager().saveUserData(offlineUser, true);
     }
 }

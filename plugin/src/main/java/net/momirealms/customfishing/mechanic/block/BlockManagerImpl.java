@@ -26,6 +26,7 @@ import net.momirealms.customfishing.api.mechanic.block.*;
 import net.momirealms.customfishing.api.mechanic.loot.Loot;
 import net.momirealms.customfishing.api.util.LogUtils;
 import net.momirealms.customfishing.compatibility.block.VanillaBlockImpl;
+import net.momirealms.customfishing.setting.CFConfig;
 import net.momirealms.customfishing.util.ConfigUtils;
 import org.bukkit.*;
 import org.bukkit.block.*;
@@ -49,6 +50,7 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.util.Vector;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
 import java.util.*;
@@ -73,17 +75,32 @@ public class BlockManagerImpl implements BlockManager, Listener {
         this.registerInbuiltProperties();
     }
 
+    /**
+     * Event handler for the EntityChangeBlockEvent.
+     * This method is triggered when an entity changes a block, typically when a block falls or lands.
+     */
     @EventHandler
     public void onBlockLands(EntityChangeBlockEvent event) {
-        if (event.isCancelled()) return;
+        if (event.isCancelled())
+            return;
+
+        // Retrieve a custom string value stored in the entity's persistent data container.
         String temp = event.getEntity().getPersistentDataContainer().get(
                 Objects.requireNonNull(NamespacedKey.fromString("block", CustomFishingPlugin.get())),
                 PersistentDataType.STRING
         );
+
+        // If the custom string value is not present, return without further action.
         if (temp == null) return;
+
+        // "BLOCK;PLAYER"
         String[] split = temp.split(";");
+
+        // If no BlockConfig is found for the specified key, return without further action.
         BlockConfig blockConfig = blockConfigMap.get(split[0]);
         if (blockConfig == null) return;
+
+        // If the player is not online or not found, remove the entity and set the block to air
         Player player = Bukkit.getPlayer(split[1]);
         if (player == null) {
             event.getEntity().remove();
@@ -91,6 +108,8 @@ public class BlockManagerImpl implements BlockManager, Listener {
             return;
         }
         Location location = event.getBlock().getLocation();
+
+        // Apply block state modifiers from the BlockConfig to the block 1 tick later.
         plugin.getScheduler().runTaskSyncLater(() -> {
             BlockState state = location.getBlock().getState();
             for (BlockStateModifier modifier : blockConfig.getStateModifierList()) {
@@ -99,23 +118,40 @@ public class BlockManagerImpl implements BlockManager, Listener {
         }, location, 50, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * Registers a BlockLibrary instance.
+     * This method associates a BlockLibrary with its unique identification and adds it to the registry.
+     *
+     * @param blockLibrary The BlockLibrary instance to register.
+     * @return True if the registration was successful (the identification is not already registered), false otherwise.
+     */
     @Override
-    public boolean registerBlockLibrary(BlockLibrary library) {
-        if (this.blockLibraryMap.containsKey(library.identification())) return false;
-        this.blockLibraryMap.put(library.identification(), library);
+    public boolean registerBlockLibrary(BlockLibrary blockLibrary) {
+        if (this.blockLibraryMap.containsKey(blockLibrary.identification())) return false;
+        this.blockLibraryMap.put(blockLibrary.identification(), blockLibrary);
         return true;
     }
 
+    /**
+     * Unregisters a BlockLibrary instance by its identification.
+     * This method removes a BlockLibrary from the registry based on its unique identification.
+     *
+     * @param identification The unique identification of the BlockLibrary to unregister.
+     * @return True if the BlockLibrary was successfully unregistered, false if it was not found.
+     */
     @Override
-    public boolean unregisterBlockLibrary(BlockLibrary library) {
-        return unregisterBlockLibrary(library.identification());
+    public boolean unregisterBlockLibrary(String identification) {
+        return blockLibraryMap.remove(identification) != null;
     }
 
-    @Override
-    public boolean unregisterBlockLibrary(String library) {
-        return blockLibraryMap.remove(library) != null;
-    }
-
+    /**
+     * Registers a BlockDataModifierBuilder for a specific type.
+     * This method associates a BlockDataModifierBuilder with its type and adds it to the registry.
+     *
+     * @param type    The type of the BlockDataModifierBuilder to register.
+     * @param builder The BlockDataModifierBuilder instance to register.
+     * @return True if the registration was successful (the type is not already registered), false otherwise.
+     */
     @Override
     public boolean registerBlockDataModifierBuilder(String type, BlockDataModifierBuilder builder) {
         if (dataBuilderMap.containsKey(type)) return false;
@@ -123,11 +159,41 @@ public class BlockManagerImpl implements BlockManager, Listener {
         return true;
     }
 
+    /**
+     * Registers a BlockStateModifierBuilder for a specific type.
+     * This method associates a BlockStateModifierBuilder with its type and adds it to the registry.
+     *
+     * @param type    The type of the BlockStateModifierBuilder to register.
+     * @param builder The BlockStateModifierBuilder instance to register.
+     * @return True if the registration was successful (the type is not already registered), false otherwise.
+     */
     @Override
     public boolean registerBlockStateModifierBuilder(String type, BlockStateModifierBuilder builder) {
         if (stateBuilderMap.containsKey(type)) return false;
         stateBuilderMap.put(type, builder);
         return true;
+    }
+
+    /**
+     * Unregisters a BlockDataModifierBuilder with the specified type.
+     *
+     * @param type The type of the BlockDataModifierBuilder to unregister.
+     * @return True if the BlockDataModifierBuilder was successfully unregistered, false otherwise.
+     */
+    @Override
+    public boolean unregisterBlockDataModifierBuilder(String type) {
+        return dataBuilderMap.remove(type) != null;
+    }
+
+    /**
+     * Unregisters a BlockStateModifierBuilder with the specified type.
+     *
+     * @param type The type of the BlockStateModifierBuilder to unregister.
+     * @return True if the BlockStateModifierBuilder was successfully unregistered, false otherwise.
+     */
+    @Override
+    public boolean unregisterBlockStateModifierBuilder(String type) {
+        return stateBuilderMap.remove(type) != null;
     }
 
     public void load() {
@@ -161,10 +227,14 @@ public class BlockManagerImpl implements BlockManager, Listener {
         this.blockLibraryMap.clear();
     }
 
+    /**
+     * Loads configuration files from the plugin's data folder and processes them.
+     * Configuration files are organized by type (e.g., "block").
+     */
     @SuppressWarnings("DuplicatedCode")
     private void loadConfig() {
         Deque<File> fileDeque = new ArrayDeque<>();
-        for (String type : List.of("blocks")) {
+        for (String type : List.of("block")) {
             File typeFolder = new File(plugin.getDataFolder() + File.separator + "contents" + File.separator + type);
             if (!typeFolder.exists()) {
                 if (!typeFolder.mkdirs()) return;
@@ -178,7 +248,7 @@ public class BlockManagerImpl implements BlockManager, Listener {
                 for (File subFile : files) {
                     if (subFile.isDirectory()) {
                         fileDeque.push(subFile);
-                    } else if (subFile.isFile()) {
+                    } else if (subFile.isFile() && subFile.getName().endsWith(".yml")) {
                         this.loadSingleFile(subFile);
                     }
                 }
@@ -186,10 +256,17 @@ public class BlockManagerImpl implements BlockManager, Listener {
         }
     }
 
+    /**
+     * Loads configuration data from a single YAML file and processes it to create BlockConfig instances.
+     *
+     * @param file The YAML file to load and process.
+     */
     private void loadSingleFile(File file) {
         YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
         for (Map.Entry<String, Object> entry : config.getValues(false).entrySet()) {
             if (entry.getValue() instanceof ConfigurationSection section) {
+
+                // Check if the "block" is null and log a warning if so.
                 String blockID = section.getString("block");
                 if (blockID == null) {
                     LogUtils.warn("Block can't be null. File:" + file.getAbsolutePath() + "; Section:" + section.getCurrentPath());
@@ -197,6 +274,8 @@ public class BlockManagerImpl implements BlockManager, Listener {
                 }
                 List<BlockDataModifier> dataModifiers = new ArrayList<>();
                 List<BlockStateModifier> stateModifiers = new ArrayList<>();
+
+                // If a "properties" section exists, process its entries.
                 ConfigurationSection property = section.getConfigurationSection("properties");
                 if (property != null) {
                     for (Map.Entry<String, Object> innerEntry : property.getValues(false).entrySet()) {
@@ -211,11 +290,13 @@ public class BlockManagerImpl implements BlockManager, Listener {
                         }
                     }
                 }
+
+                // Create a BlockConfig instance with the processed data and add it to the blockConfigMap.
                 BlockConfig blockConfig = new BlockConfig.Builder()
                         .blockID(blockID)
                         .persist(false)
-                        .horizontalVector(section.getDouble("vector.horizontal", 1.1))
-                        .verticalVector(section.getDouble("vector.vertical", 1.2))
+                        .horizontalVector(section.getDouble("velocity.horizontal", 1.1))
+                        .verticalVector(section.getDouble("velocity.vertical", 1.2))
                         .dataModifiers(dataModifiers)
                         .stateModifiers(stateModifiers)
                         .build();
@@ -224,6 +305,15 @@ public class BlockManagerImpl implements BlockManager, Listener {
         }
     }
 
+    /**
+     * Summons a falling block at a specified location based on the provided loot.
+     * This method spawns a falling block at the given hookLocation with specific properties determined by the loot.
+     *
+     * @param player         The player who triggered the action.
+     * @param hookLocation   The location where the hook is positioned.
+     * @param playerLocation The location of the player.
+     * @param loot           The loot to be associated with the summoned block.
+     */
     @Override
     public void summonBlock(Player player, Location hookLocation, Location playerLocation, Loot loot) {
         BlockConfig config = blockConfigMap.get(loot.getID());
@@ -250,6 +340,30 @@ public class BlockManagerImpl implements BlockManager, Listener {
         Vector vector = playerLocation.subtract(hookLocation).toVector().multiply((config.getHorizontalVector()) - 1);
         vector = vector.setY((vector.getY() + 0.2) * config.getVerticalVector());
         fallingBlock.setVelocity(vector);
+    }
+
+    /**
+     * Retrieves the block ID associated with a given Block instance using block detection order.
+     * This method iterates through the configured block detection order to find the block's ID
+     * by checking different BlockLibrary instances in the specified order.
+     *
+     * @param block The Block instance for which to retrieve the block ID.
+     * @return The block ID
+     */
+    @Override
+    @NotNull
+    public String getAnyPluginBlockID(Block block) {
+        for (String plugin : CFConfig.blockDetectOrder) {
+            BlockLibrary blockLibrary = blockLibraryMap.get(plugin);
+            if (blockLibrary != null) {
+                String id = blockLibrary.getBlockID(block);
+                if (id != null) {
+                    return id;
+                }
+            }
+        }
+        // Should not reach this because vanilla library would always work
+        return "AIR";
     }
 
     private void registerDirectional() {
@@ -373,6 +487,13 @@ public class BlockManagerImpl implements BlockManager, Listener {
         });
     }
 
+    /**
+     * Sets items in the BLOCK's inventory based on chance and configuration.
+     *
+     * @param tempChanceList A list of tuples containing chance, item ID, and quantity range for each item.
+     * @param player         The inventory items are being set.
+     * @param inventory      The inventory where the items will be placed.
+     */
     private void setInventoryItems(
             ArrayList<Tuple<Double, String, Pair<Integer, Integer>>> tempChanceList,
             Player player,
@@ -384,7 +505,7 @@ public class BlockManagerImpl implements BlockManager, Listener {
         }
         Collections.shuffle(unused);
         for (Tuple<Double, String, Pair<Integer, Integer>> tuple : tempChanceList) {
-            ItemStack itemStack = plugin.getItemManager().buildAnyItemByID(player, tuple.getMid());
+            ItemStack itemStack = plugin.getItemManager().buildAnyPluginItemByID(player, tuple.getMid());
             itemStack.setAmount(ThreadLocalRandom.current().nextInt(tuple.getRight().left(), tuple.getRight().right() + 1));
             if (tuple.getLeft() > Math.random()) {
                 inventory.setItem(unused.pop(), itemStack);

@@ -19,7 +19,7 @@ package net.momirealms.customfishing.api.mechanic.loot;
 
 import net.momirealms.customfishing.api.mechanic.action.Action;
 import net.momirealms.customfishing.api.mechanic.action.ActionTrigger;
-import net.momirealms.customfishing.api.mechanic.game.GameConfig;
+import net.momirealms.customfishing.api.mechanic.condition.Condition;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
@@ -71,17 +71,15 @@ public interface Loot {
      */
     boolean disableStats();
 
-    /**
-     * Get the game config
-     * @return game config
-     */
-    GameConfig getGameConfig();
+    String[] getLootGroup();
 
     /**
      * get actions triggered by certain events
      * @return actions
      */
     Action[] getActions(ActionTrigger actionTrigger);
+
+    void triggerActions(ActionTrigger actionTrigger, Condition condition);
 
     /**
      * get actions when succeeding in fishing for certain times
