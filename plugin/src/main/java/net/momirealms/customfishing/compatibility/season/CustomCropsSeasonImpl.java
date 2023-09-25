@@ -18,10 +18,10 @@
 package net.momirealms.customfishing.compatibility.season;
 
 import net.momirealms.customcrops.api.CustomCropsAPI;
+import net.momirealms.customcrops.api.object.CCWorldSeason;
 import net.momirealms.customfishing.api.integration.SeasonInterface;
 import org.bukkit.World;
-
-import java.util.Objects;
+import org.jetbrains.annotations.NotNull;
 
 public class CustomCropsSeasonImpl implements SeasonInterface {
 
@@ -31,8 +31,11 @@ public class CustomCropsSeasonImpl implements SeasonInterface {
         customCropsAPI = CustomCropsAPI.getInstance();
     }
 
+    @NotNull
     @Override
     public String getSeason(World world) {
-        return Objects.requireNonNull(customCropsAPI.getSeason(world.getName())).getSeason();
+        CCWorldSeason season = customCropsAPI.getSeason(world.getName());
+        if (season == null) return "disabled";
+        return season.getSeason();
     }
 }

@@ -56,6 +56,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.jetbrains.annotations.Nullable;
 
+import java.text.DecimalFormatSymbols;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -244,6 +245,11 @@ public class FishingManagerImpl implements Listener, FishingManager {
         }
     }
 
+    /**
+     * Handle the event when the fishing hook lands on the ground.
+     *
+     * @param event The PlayerFishEvent that occurred.
+     */
     private void onInGround(PlayerFishEvent event) {
         final Player player = event.getPlayer();
         FishHook hook = event.getHook();
@@ -262,6 +268,11 @@ public class FishingManagerImpl implements Listener, FishingManager {
         }
     }
 
+    /**
+     * Handle the event when a player casts a fishing rod.
+     *
+     * @param event The PlayerFishEvent that occurred.
+     */
     public void onCastRod(PlayerFishEvent event) {
         var player = event.getPlayer();
         var fishingPreparation = new FishingPreparation(player, plugin);
@@ -273,6 +284,7 @@ public class FishingManagerImpl implements Listener, FishingManager {
         if (!RequirementManager.isRequirementMet(
                 fishingPreparation, RequirementManagerImpl.mechanicRequirements
         )) {
+            removeTempFishingState(player);
             return;
         }
         // Merge rod/bait/util effects
@@ -312,6 +324,11 @@ public class FishingManagerImpl implements Listener, FishingManager {
         fishingPreparation.triggerActions(ActionTrigger.CAST);
     }
 
+    /**
+     * Handle the event when a player catches an entity.
+     *
+     * @param event The PlayerFishEvent that occurred.
+     */
     private void onCaughtEntity(PlayerFishEvent event) {
         final Player player = event.getPlayer();
         final UUID uuid = player.getUniqueId();
@@ -361,23 +378,28 @@ public class FishingManagerImpl implements Listener, FishingManager {
         }
     }
 
+    /**
+     * Handle the event when a player catches a fish.
+     *
+     * @param event The PlayerFishEvent that occurred.
+     */
     private void onCaughtFish(PlayerFishEvent event) {
         final Player player = event.getPlayer();
         final UUID uuid = player.getUniqueId();
-        if (!(event.getCaught() instanceof Item item)) return;
+        if (!(event.getCaught() instanceof Item item))
+            return;
 
         // If player is playing the game
         GamingPlayer gamingPlayer = gamingPlayerMap.get(uuid);
         if (gamingPlayer != null) {
-            if (gamingPlayer.onRightClick()) {
+            if (gamingPlayer.onRightClick())
                 event.setCancelled(true);
-            }
             return;
         }
 
         // If player is not playing the game
-        var temp = this.tempFishingStateMap.get(uuid);
-        if (temp != null ) {
+        var temp = this.getTempFishingState(uuid);
+        if (temp != null) {
             var loot = temp.getLoot();
             if (loot.getID().equals("vanilla")) {
                 // put vanilla loot in map
@@ -398,26 +420,26 @@ public class FishingManagerImpl implements Listener, FishingManager {
             }
             return;
         }
-
-        if (!CFConfig.vanillaMechanicIfNoLoot) {
-            event.setCancelled(true);
-            event.getHook().remove();
-        }
     }
 
+    /**
+     * Handle the event when a player receives a bite on their fishing hook.
+     *
+     * @param event The PlayerFishEvent that occurred.
+     */
     private void onBite(PlayerFishEvent event) {
         final Player player = event.getPlayer();
         final UUID uuid = player.getUniqueId();
 
         // If player is already in game
         // then ignore the event
-        GamingPlayer gamingPlayer = gamingPlayerMap.get(uuid);
+        GamingPlayer gamingPlayer = getGamingPlayer(uuid);
         if (gamingPlayer != null) {
             return;
         }
 
         // If the loot's game is instant
-        TempFishingState temp = tempFishingStateMap.get(uuid);
+        TempFishingState temp = getTempFishingState(uuid);
         if (temp != null) {
             var loot = temp.getLoot();
 
@@ -432,12 +454,17 @@ public class FishingManagerImpl implements Listener, FishingManager {
         }
     }
 
+    /**
+     * Handle the event when a player reels in their fishing line.
+     *
+     * @param event The PlayerFishEvent that occurred.
+     */
     private void onReelIn(PlayerFishEvent event) {
         final Player player = event.getPlayer();
         final UUID uuid = player.getUniqueId();
 
         // If player is in game
-        GamingPlayer gamingPlayer = gamingPlayerMap.get(uuid);
+        GamingPlayer gamingPlayer = getGamingPlayer(uuid);
         if (gamingPlayer != null) {
             if (gamingPlayer.onRightClick())
                 event.setCancelled(true);
@@ -454,7 +481,7 @@ public class FishingManagerImpl implements Listener, FishingManager {
                 return;
             }
 
-            var temp = this.tempFishingStateMap.get(uuid);
+            var temp = getTempFishingState(uuid);
             if (temp != null ) {
                 Loot loot = temp.getLoot();
                 loot.triggerActions(ActionTrigger.HOOK, temp.getPreparation());
@@ -559,12 +586,18 @@ public class FishingManagerImpl implements Listener, FishingManager {
         ItemUtils.decreaseHookDurability(fishingPreparation.getRodItemStack(), 1, true);
     }
 
+    /**
+     * Handle the success of a fishing attempt, including spawning loot, calling events, and executing success actions.
+     *
+     * @param state The temporary fishing state containing information about the loot and effect.
+     * @param hook The FishHook entity associated with the fishing attempt.
+     */
     public void success(TempFishingState state, FishHook hook) {
         var loot = state.getLoot();
         var effect = state.getEffect();
         var fishingPreparation = state.getPreparation();
         var player = fishingPreparation.getPlayer();
-        fishingPreparation.insertArg("{size-multiplier}", String.format("%.2f", effect.getSizeMultiplier()));
+        fishingPreparation.insertArg("{size-multiplier}", String.valueOf(effect.getSizeMultiplier()));
         int amount;
         if (loot.getType() == LootType.ITEM) {
             amount = (int) effect.getMultipleLootChance();
@@ -617,6 +650,14 @@ public class FishingManagerImpl implements Listener, FishingManager {
         doSuccessActions(loot, effect, fishingPreparation, player);
     }
 
+    /**
+     * Execute success-related actions after a successful fishing attempt, including updating competition data, triggering events and actions, and updating player statistics.
+     *
+     * @param loot The loot that was successfully caught.
+     * @param effect The effect applied during fishing.
+     * @param fishingPreparation The fishing preparation containing preparation data.
+     * @param player The player who successfully caught the loot.
+     */
     private void doSuccessActions(Loot loot, Effect effect, FishingPreparation fishingPreparation, Player player) {
         FishingCompetition competition = plugin.getCompetitionManager().getOnGoingCompetition();
         if (competition != null) {

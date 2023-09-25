@@ -19,6 +19,7 @@ package net.momirealms.customfishing.mechanic.competition;
 
 import net.momirealms.customfishing.api.CustomFishingPlugin;
 import net.momirealms.customfishing.api.common.Pair;
+import net.momirealms.customfishing.api.event.CompetitionEvent;
 import net.momirealms.customfishing.api.manager.CompetitionManager;
 import net.momirealms.customfishing.api.mechanic.action.Action;
 import net.momirealms.customfishing.api.mechanic.competition.*;
@@ -27,6 +28,7 @@ import net.momirealms.customfishing.api.scheduler.CancellableTask;
 import net.momirealms.customfishing.api.util.LogUtils;
 import net.momirealms.customfishing.setting.CFLocale;
 import net.momirealms.customfishing.storage.method.database.nosql.RedisManager;
+import net.momirealms.customfishing.util.ConfigUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.boss.BarColor;
 import org.bukkit.configuration.ConfigurationSection;
@@ -155,7 +157,9 @@ public class CompetitionManagerImpl implements CompetitionManager {
 
                 CompetitionConfig competitionConfig = builder.build();
                 List<Pair<Integer, Integer>> timePairs = section.getStringList("start-time")
-                        .stream().map(this::getTimePair).toList();
+                        .stream().map(it -> {
+                            return ConfigUtils.splitStringIntegerArgs(it, ":");
+                        }).toList();
                 List<Integer> weekdays = section.getIntegerList("start-weekday");
                 if (weekdays.size() == 0) {
                     weekdays.addAll(List.of(1,2,3,4,5,6,7));
@@ -171,6 +175,12 @@ public class CompetitionManagerImpl implements CompetitionManager {
         }
     }
 
+    /**
+     * Gets prize actions from a configuration section.
+     *
+     * @param section The configuration section containing prize actions.
+     * @return A HashMap where keys are action names and values are arrays of Action objects.
+     */
     public HashMap<String, Action[]> getPrizeActions(ConfigurationSection section) {
         HashMap<String, Action[]> map = new HashMap<>();
         if (section == null) return map;
@@ -182,11 +192,9 @@ public class CompetitionManagerImpl implements CompetitionManager {
         return map;
     }
 
-    public Pair<Integer, Integer> getTimePair(String time) {
-        String[] split = time.split(":");
-        return Pair.of(Integer.parseInt(split[0]), Integer.parseInt(split[1]));
-    }
-
+    /**
+     * Checks the timer for the next competition and starts it if necessary.
+     */
     public void timerCheck() {
         LocalDateTime now = LocalDateTime.now();
         CompetitionSchedule competitionSchedule = new CompetitionSchedule(
@@ -298,12 +306,15 @@ public class CompetitionManagerImpl implements CompetitionManager {
 
     private void start(CompetitionConfig config) {
         if (getOnGoingCompetition() != null) {
+            // END
             currentCompetition.end();
             plugin.getScheduler().runTaskAsyncLater(() -> {
+                // start one second later
                 this.currentCompetition = new Competition(config);
                 this.currentCompetition.start();
             }, 1, TimeUnit.SECONDS);
         } else {
+            // start instantly
             this.currentCompetition = new Competition(config);
             this.currentCompetition.start();
         }

@@ -41,7 +41,8 @@ public class CFConfig {
 
     // config version
     public static String configVersion = "27";
-
+    // Debug mode
+    public static boolean debug;
     // language
     public static String language;
 
@@ -72,11 +73,6 @@ public class CFConfig {
     // Lava fishing
     public static int lavaMinTime;
     public static int lavaMaxTime;
-
-    // Exception
-    public static boolean vanillaMechanicIfNoLoot;
-    public static Action[] noLootActions;
-    public static boolean debug;
 
     // Competition
     public static boolean redisRanking;
@@ -124,9 +120,9 @@ public class CFConfig {
         metrics = config.getBoolean("metrics");
         eventPriority = EventPriority.valueOf(config.getString("other-settings.event-priority", "NORMAL").toUpperCase(Locale.ENGLISH));
 
-        corePoolSize = config.getInt("other-settings.thread-pool-settings.corePoolSize", 4);
-        maximumPoolSize = config.getInt("other-settings.thread-pool-settings.maximumPoolSize", 8);
-        keepAliveTime = config.getInt("other-settings.thread-pool-settings.keepAliveTime", 10);
+        corePoolSize = config.getInt("other-settings.thread-pool-settings.corePoolSize", 1);
+        maximumPoolSize = config.getInt("other-settings.thread-pool-settings.maximumPoolSize", 1);
+        keepAliveTime = config.getInt("other-settings.thread-pool-settings.keepAliveTime", 30);
 
         itemDetectOrder = config.getStringList("other-settings.item-detection-order");
         blockDetectOrder = config.getStringList("other-settings.block-detection-order");
@@ -138,9 +134,6 @@ public class CFConfig {
 
         lavaMinTime = config.getInt("mechanics.lava-fishing.min-wait-time", 100);
         lavaMaxTime = config.getInt("mechanics.lava-fishing.max-wait-time", 600);
-
-        vanillaMechanicIfNoLoot = config.getBoolean("mechanics.vanilla-mechanic-if-no-loot.enable", false);
-        noLootActions = CustomFishingPlugin.get().getActionManager().getActions(config.getConfigurationSection("mechanics.vanilla-mechanic-if-no-loot.actions"));
 
         redisRanking = config.getBoolean("mechanics.competition.redis-ranking", false);
         placeholderLimit = config.getInt("mechanics.competition.placeholder-limit", 3);
