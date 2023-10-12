@@ -29,6 +29,7 @@ import net.momirealms.customfishing.api.mechanic.loot.WeightModifier;
 import net.momirealms.customfishing.api.util.LogUtils;
 import net.momirealms.customfishing.api.util.WeightUtils;
 import net.momirealms.customfishing.mechanic.requirement.RequirementManagerImpl;
+import net.momirealms.customfishing.setting.CFConfig;
 import net.momirealms.customfishing.util.ConfigUtils;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -222,6 +223,7 @@ public class LootManagerImpl implements LootManager {
         for (Map.Entry<String, Object> entry : yaml.getValues(false).entrySet()) {
             if (entry.getValue() instanceof ConfigurationSection section) {
                 var loot = getSingleSectionItem(
+                        file.getPath(),
                         section,
                         namespace,
                         entry.getKey()
@@ -252,12 +254,13 @@ public class LootManagerImpl implements LootManager {
      * @param key       The unique key identifying the loot configuration.
      * @return A CFLoot object representing the loot configuration.
      */
-    private CFLoot getSingleSectionItem(ConfigurationSection section, String namespace, String key) {
+    private CFLoot getSingleSectionItem(String filePath, ConfigurationSection section, String namespace, String key) {
         return new CFLoot.Builder(key, LootType.valueOf(namespace.toUpperCase(Locale.ENGLISH)))
-                .disableStats(section.getBoolean("disable-stat", false))
-                .disableGames(section.getBoolean("disable-game", false))
-                .instantGame(section.getBoolean("instant-game", false))
-                .showInFinder(section.getBoolean("show-in-fishfinder", true))
+                .filePath(filePath)
+                .disableStats(section.getBoolean("disable-stat", CFConfig.globalDisableStats))
+                .disableGames(section.getBoolean("disable-game", CFConfig.globalDisableGame))
+                .instantGame(section.getBoolean("instant-game", CFConfig.globalInstantGame))
+                .showInFinder(section.getBoolean("show-in-fishfinder", CFConfig.globalShowInFinder))
                 .score(section.getDouble("score"))
                 .lootGroup(ConfigUtils.stringListArgs(section.get("group")).toArray(new String[0]))
                 .nick(section.getString("nick", section.getString("display.name", key)))

@@ -22,10 +22,14 @@ import net.momirealms.customfishing.api.common.Tuple;
 import net.momirealms.customfishing.api.mechanic.loot.WeightModifier;
 import net.momirealms.customfishing.api.util.LogUtils;
 import net.momirealms.customfishing.compatibility.papi.PlaceholderManagerImpl;
+import net.momirealms.customfishing.mechanic.misc.value.ExpressionValue;
+import net.momirealms.customfishing.mechanic.misc.value.PlainValue;
+import net.momirealms.customfishing.mechanic.misc.value.Value;
 import net.objecthunter.exp4j.Expression;
 import net.objecthunter.exp4j.ExpressionBuilder;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -103,21 +107,71 @@ public class ConfigUtils {
     }
 
     /**
+     * Converts an object into an integer value.
+     *
+     * @param arg The input object
+     * @return An integer value
+     */
+    public static int getIntegerValue(Object arg) {
+        if (arg instanceof Integer i) {
+            return i;
+        } else if (arg instanceof Double d) {
+            return d.intValue();
+        }
+        return 0;
+    }
+
+    /**
+     * Converts an object into a "value".
+     *
+     * @param arg int / double / expression
+     * @return Value
+     */
+    public static Value getValue(Object arg) {
+        if (arg instanceof Integer i) {
+            return new PlainValue(i);
+        } else if (arg instanceof Double d) {
+            return new PlainValue(d);
+        } else if (arg instanceof String s) {
+            return new ExpressionValue(s);
+        }
+        throw new IllegalArgumentException("Illegal value type");
+    }
+
+    /**
      * Parses a string representing a size range and returns a pair of floats.
      *
-     * @param size The size string in the format "min~max".
+     * @param string The size string in the format "min~max".
      * @return A pair of floats representing the minimum and maximum size.
      */
     @Nullable
-    public static Pair<Float, Float> getSizePair(String size) {
-        if (size == null) return null;
-        String[] split = size.split("~", 2);
+    public static Pair<Float, Float> getFloatPair(String string) {
+        if (string == null) return null;
+        String[] split = string.split("~", 2);
         if (split.length != 2) {
-            LogUtils.warn("Illegal size argument: " + size);
+            LogUtils.warn("Illegal size argument: " + string);
             LogUtils.warn("Correct usage example: 10.5~25.6");
-            return null;
+            throw new IllegalArgumentException("Illegal float range");
         }
         return Pair.of(Float.parseFloat(split[0]), Float.parseFloat(split[1]));
+    }
+
+    /**
+     * Parses a string representing a size range and returns a pair of ints.
+     *
+     * @param string The size string in the format "min~max".
+     * @return A pair of ints representing the minimum and maximum size.
+     */
+    @Nullable
+    public static Pair<Integer, Integer> getIntegerPair(String string) {
+        if (string == null) return null;
+        String[] split = string.split("~", 2);
+        if (split.length != 2) {
+            LogUtils.warn("Illegal size argument: " + string);
+            LogUtils.warn("Correct usage example: 10~20");
+            throw new IllegalArgumentException("Illegal int range");
+        }
+        return Pair.of(Integer.parseInt(split[0]), Integer.parseInt(split[1]));
     }
 
     /**
@@ -231,19 +285,76 @@ public class ConfigUtils {
             }
             case '=' -> {
                 String formula = text.substring(1);
-                boolean hasPapi = PlaceholderManagerImpl.getInstance().hasPapi();
-                return (player, weight) -> {
-                    String temp = formula;
-                    if (hasPapi)
-                        temp = PlaceholderManagerImpl.getInstance().parseCacheablePlaceholders(player, formula);
-                    Expression expression = new ExpressionBuilder(temp)
-                            .variables("0")
-                            .build()
-                            .setVariable("0", weight);
-                    return expression.evaluate();
-                };
+                return (player, weight) -> getExpressionValue(player, formula, Map.of("0", weight));
             }
             default -> throw new IllegalArgumentException("Invalid weight: " + text);
+        }
+    }
+
+    public static double getExpressionValue(Player player, String formula, Map<String, Double> vars) {
+        boolean hasPapi = PlaceholderManagerImpl.getInstance().hasPapi();
+        if (hasPapi)
+            formula = PlaceholderManagerImpl.getInstance().parseCacheablePlaceholders(player, formula);
+        ExpressionBuilder expressionBuilder = new ExpressionBuilder(formula);
+        for (Map.Entry<String, Double> entry : vars.entrySet()) {
+            expressionBuilder.variables(entry.getKey());
+        }
+        Expression expression = expressionBuilder.build();
+        for (Map.Entry<String, Double> entry : vars.entrySet()) {
+            expression.setVariable(entry.getKey(), entry.getValue());
+        }
+        return expression.evaluate();
+    }
+
+    public static ArrayList<String> getReadableSection(Map<String, Object> map) {
+        ArrayList<String> list = new ArrayList<>();
+        mapToReadableStringList(map, list, 0, false);
+        return list;
+    }
+
+    @SuppressWarnings("unchecked")
+    public static void mapToReadableStringList(Map<String, Object> map, List<String> readableList, int loop_times, boolean isMapList) {
+        boolean first = true;
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            Object nbt = entry.getValue();
+            if (nbt instanceof String value) {
+                if (isMapList && first) {
+                    first = false;
+                    readableList.add("  ".repeat(loop_times - 1) + "<white>- <gold>" + entry.getKey() + ": <white>" + value);
+                } else {
+                    readableList.add("  ".repeat(loop_times) + "<gold>" + entry.getKey() + ": <white>" + value);
+                }
+            } else if (nbt instanceof List<?> list) {
+                if (isMapList && first) {
+                    first = false;
+                    readableList.add("  ".repeat(loop_times - 1) + "<white>- <gold>" + entry.getKey() + ":");
+                } else {
+                    readableList.add("  ".repeat(loop_times) + "<gold>" + entry.getKey() + ":");
+                }
+                for (Object value : list) {
+                    if (value instanceof Map<?,?> nbtMap) {
+                        mapToReadableStringList((Map<String, Object>) nbtMap, readableList, loop_times + 2, true);
+                    } else {
+                        readableList.add("  ".repeat(loop_times + 1) + "<white>- " + value);
+                    }
+                }
+            } else if (nbt instanceof ConfigurationSection section) {
+                if (isMapList && first) {
+                    first = false;
+                    readableList.add("  ".repeat(loop_times - 1) + "<white>- <gold>" + entry.getKey() + ":");
+                } else {
+                    readableList.add("  ".repeat(loop_times) + "<gold>" + entry.getKey() + ":");
+                }
+                mapToReadableStringList(section.getValues(false), readableList, loop_times + 1, false);
+            } else if (nbt instanceof Map<?,?> innerMap) {
+                if (isMapList && first) {
+                    first = false;
+                    readableList.add("  ".repeat(loop_times - 1) + "<white>- <gold>" + entry.getKey() + ":");
+                } else {
+                    readableList.add("  ".repeat(loop_times) + "<gold>" + entry.getKey() + ":");
+                }
+                mapToReadableStringList((Map<String, Object>) innerMap, readableList, loop_times + 1, false);
+            }
         }
     }
 }

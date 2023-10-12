@@ -20,7 +20,6 @@ package net.momirealms.customfishing.command;
 import dev.jorel.commandapi.CommandAPI;
 import dev.jorel.commandapi.CommandAPIBukkitConfig;
 import dev.jorel.commandapi.CommandAPICommand;
-import dev.jorel.commandapi.CommandPermission;
 import dev.jorel.commandapi.arguments.EntitySelectorArgument;
 import net.momirealms.customfishing.CustomFishingPluginImpl;
 import net.momirealms.customfishing.adventure.AdventureManagerImpl;
@@ -47,11 +46,12 @@ public class CommandManagerImpl implements CommandManager {
     public void load() {
         new CommandAPICommand("customfishing")
                 .withAliases("cfishing")
-                .withPermission(CommandPermission.OP)
+                .withPermission("customfishing.admin")
                 .withSubcommands(
                         getReloadCommand(),
                         getMarketCommand(),
                         getAboutCommand(),
+                        GUIEditorCommand.INSTANCE.getEditorCommand(),
                         DataCommand.INSTANCE.getDataCommand(),
                         CompetitionCommand.INSTANCE.getCompetitionCommand(),
                         ItemCommand.INSTANCE.getItemCommand(),

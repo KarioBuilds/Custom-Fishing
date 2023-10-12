@@ -20,7 +20,10 @@ package net.momirealms.customfishing.mechanic.fishing;
 import com.destroystokyo.paper.event.player.PlayerJumpEvent;
 import de.tr7zw.changeme.nbtapi.NBTCompound;
 import de.tr7zw.changeme.nbtapi.NBTItem;
+import net.kyori.adventure.key.Key;
+import net.kyori.adventure.sound.Sound;
 import net.momirealms.customfishing.CustomFishingPluginImpl;
+import net.momirealms.customfishing.adventure.AdventureManagerImpl;
 import net.momirealms.customfishing.api.common.Pair;
 import net.momirealms.customfishing.api.event.FishingResultEvent;
 import net.momirealms.customfishing.api.event.LavaFishingEvent;
@@ -50,14 +53,19 @@ import net.momirealms.customfishing.setting.CFConfig;
 import net.momirealms.customfishing.util.ItemUtils;
 import org.bukkit.*;
 import org.bukkit.entity.*;
-import org.bukkit.event.*;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
 import org.bukkit.event.player.*;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.jetbrains.annotations.Nullable;
 
-import java.text.DecimalFormatSymbols;
-import java.util.*;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class FishingManagerImpl implements Listener, FishingManager {
@@ -67,7 +75,7 @@ public class FishingManagerImpl implements Listener, FishingManager {
     private final ConcurrentHashMap<UUID, HookCheckTimerTask> hookCheckMap;
     private final ConcurrentHashMap<UUID, TempFishingState> tempFishingStateMap;
     private final ConcurrentHashMap<UUID, GamingPlayer> gamingPlayerMap;
-    private final ConcurrentHashMap<UUID, ItemStack> vanillaLootMap;
+    private final ConcurrentHashMap<UUID, Pair<ItemStack, Integer>> vanillaLootMap;
 
     public FishingManagerImpl(CustomFishingPluginImpl plugin) {
         this.plugin = plugin;
@@ -173,20 +181,6 @@ public class FishingManagerImpl implements Listener, FishingManager {
         if (gamingPlayer != null) {
             if (gamingPlayer.onChat(event.getMessage()))
                 event.setCancelled(true);
-        }
-    }
-
-    @EventHandler
-    public void onLeftClick(PlayerInteractEvent event) {
-        if (event.useItemInHand() == Event.Result.DENY)
-            return;
-        if (event.getAction() != org.bukkit.event.block.Action.LEFT_CLICK_AIR)
-            return;
-        GamingPlayer gamingPlayer = gamingPlayerMap.get(event.getPlayer().getUniqueId());
-        if (gamingPlayer != null) {
-            if (gamingPlayer.onLeftClick()) {
-                event.setCancelled(true);
-            }
         }
     }
 
@@ -403,7 +397,7 @@ public class FishingManagerImpl implements Listener, FishingManager {
             var loot = temp.getLoot();
             if (loot.getID().equals("vanilla")) {
                 // put vanilla loot in map
-                this.vanillaLootMap.put(uuid, item.getItemStack());
+                this.vanillaLootMap.put(uuid, Pair.of(item.getItemStack(), event.getExpToDrop()));
             }
             loot.triggerActions(ActionTrigger.HOOK, temp.getPreparation());
             temp.getPreparation().triggerActions(ActionTrigger.HOOK);
@@ -546,12 +540,13 @@ public class FishingManagerImpl implements Listener, FishingManager {
                     ItemUtils.decreaseDurability(rod, 1, true);
                 }
 
-            fishHook.remove();
-
             if (gamingPlayer.isSuccessful())
                 success(tempFishingState, fishHook);
             else
                 fail(tempFishingState, fishHook);
+
+            fishHook.remove();
+
         }, fishHook.getLocation());
     }
 
@@ -560,10 +555,10 @@ public class FishingManagerImpl implements Listener, FishingManager {
         var fishingPreparation = state.getPreparation();
 
         if (loot.getID().equals("vanilla")) {
-            ItemStack itemStack = this.vanillaLootMap.remove(fishingPreparation.getPlayer().getUniqueId());
-            if (itemStack != null) {
-                fishingPreparation.insertArg("{nick}", "<lang:item.minecraft." + itemStack.getType().toString().toLowerCase() + ">");
-                fishingPreparation.insertArg("{loot}", itemStack.getType().toString());
+            Pair<ItemStack, Integer> pair = this.vanillaLootMap.remove(fishingPreparation.getPlayer().getUniqueId());
+            if (pair != null) {
+                fishingPreparation.insertArg("{nick}", "<lang:item.minecraft." + pair.left().getType().toString().toLowerCase() + ">");
+                fishingPreparation.insertArg("{loot}", pair.left().getType().toString());
             }
         }
 
@@ -571,6 +566,7 @@ public class FishingManagerImpl implements Listener, FishingManager {
         FishingResultEvent fishingResultEvent = new FishingResultEvent(
                 fishingPreparation.getPlayer(),
                 FishingResultEvent.Result.FAILURE,
+                hook,
                 loot,
                 fishingPreparation.getArgs()
         );
@@ -611,6 +607,7 @@ public class FishingManagerImpl implements Listener, FishingManager {
         FishingResultEvent fishingResultEvent = new FishingResultEvent(
                 player,
                 FishingResultEvent.Result.SUCCESS,
+                hook,
                 loot,
                 fishingPreparation.getArgs()
         );
@@ -624,12 +621,16 @@ public class FishingManagerImpl implements Listener, FishingManager {
 
                 // build the items for multiple times instead of using setAmount() to make sure that each item is unique
                 if (loot.getID().equals("vanilla")) {
-                    ItemStack itemStack = vanillaLootMap.remove(player.getUniqueId());
-                    if (itemStack != null) {
-                        fishingPreparation.insertArg("{nick}", "<lang:item.minecraft." + itemStack.getType().toString().toLowerCase() + ">");
+                    Pair<ItemStack, Integer> pair = vanillaLootMap.remove(player.getUniqueId());
+                    if (pair != null) {
+                        fishingPreparation.insertArg("{nick}", "<lang:item.minecraft." + pair.left().getType().toString().toLowerCase() + ">");
                         for (int i = 0; i < amount; i++) {
-                            plugin.getItemManager().dropItem(hook.getLocation(), player.getLocation(), itemStack.clone());
+                            plugin.getItemManager().dropItem(hook.getLocation(), player.getLocation(), pair.left().clone());
                             doSuccessActions(loot, effect, fishingPreparation, player);
+                            if (pair.right() > 0) {
+                                player.giveExp(pair.right(), true);
+                                AdventureManagerImpl.getInstance().sendSound(player, Sound.Source.PLAYER, Key.key("minecraft:entity.experience_orb.pickup"), 1, 1);
+                            }
                         }
                     }
                 } else {
@@ -661,32 +662,37 @@ public class FishingManagerImpl implements Listener, FishingManager {
     private void doSuccessActions(Loot loot, Effect effect, FishingPreparation fishingPreparation, Player player) {
         FishingCompetition competition = plugin.getCompetitionManager().getOnGoingCompetition();
         if (competition != null) {
-            switch (competition.getGoal()) {
-                case CATCH_AMOUNT -> {
-                    fishingPreparation.insertArg("{score}", "1");
-                    competition.refreshData(player, 1);
-                }
-                case MAX_SIZE, TOTAL_SIZE -> {
-                    String size = fishingPreparation.getArg("{size}");
-                    if (size != null) {
-                        fishingPreparation.insertArg("{score}", size);
-                        competition.refreshData(player, Double.parseDouble(size));
-                    } else {
-                        fishingPreparation.insertArg("{score}", "0");
+            String scoreStr = fishingPreparation.getArg("{SCORE}");
+            if (scoreStr != null) {
+                competition.refreshData(player, Double.parseDouble(scoreStr));
+            } else {
+                switch (competition.getGoal()) {
+                    case CATCH_AMOUNT -> {
+                        double score = effect.getScoreMultiplier();
+                        fishingPreparation.insertArg("{score}", String.format("%.2f", score));
+                        competition.refreshData(player, score);
                     }
-                }
-                case TOTAL_SCORE -> {
-                    double score = loot.getScore();
-                    if (score != 0) {
-                        fishingPreparation.insertArg("{score}", String.format("%.2f", score * effect.getScoreMultiplier()));
-                        competition.refreshData(player, score * effect.getScoreMultiplier());
-                    } else {
-                        fishingPreparation.insertArg("{score}", "0");
+                    case MAX_SIZE, TOTAL_SIZE -> {
+                        String size = fishingPreparation.getArg("{size}");
+                        if (size != null) {
+                            double score = Double.parseDouble(size) * effect.getScoreMultiplier();
+                            fishingPreparation.insertArg("{score}", String.format("%.2f", score));
+                            competition.refreshData(player, score);
+                        } else {
+                            fishingPreparation.insertArg("{score}", "0");
+                        }
+                    }
+                    case TOTAL_SCORE -> {
+                        double score = loot.getScore();
+                        if (score != 0) {
+                            fishingPreparation.insertArg("{score}", String.format("%.2f", score * effect.getScoreMultiplier()));
+                            competition.refreshData(player, score * effect.getScoreMultiplier());
+                        } else {
+                            fishingPreparation.insertArg("{score}", "0");
+                        }
                     }
                 }
             }
-        } else {
-            fishingPreparation.insertArg("{score}","-1");
         }
 
         // events and actions

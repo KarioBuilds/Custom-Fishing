@@ -18,11 +18,13 @@
 package net.momirealms.customfishing.api.event;
 
 import net.momirealms.customfishing.api.mechanic.loot.Loot;
+import org.bukkit.entity.FishHook;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.player.PlayerEvent;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
 import java.util.Optional;
@@ -36,6 +38,7 @@ public class FishingResultEvent extends PlayerEvent implements Cancellable {
     private boolean isCancelled;
     private final Result result;
     private final Loot loot;
+    private final FishHook fishHook;
     private final Map<String, String> args;
 
     /**
@@ -46,11 +49,12 @@ public class FishingResultEvent extends PlayerEvent implements Cancellable {
      * @param loot   The loot received from fishing.
      * @param args   A map of placeholders and their corresponding values.
      */
-    public FishingResultEvent(@NotNull Player who, Result result, Loot loot, Map<String, String> args) {
+    public FishingResultEvent(@NotNull Player who, Result result, FishHook fishHook, Loot loot, Map<String, String> args) {
         super(who);
         this.result = result;
         this.loot = loot;
         this.args = args;
+        this.fishHook = fishHook;
     }
 
     public static HandlerList getHandlerList() {
@@ -85,12 +89,32 @@ public class FishingResultEvent extends PlayerEvent implements Cancellable {
     }
 
     /**
+     * Set the value associated with a specific argument key.
+     * @param key key
+     * @param value value
+     * @return previous value
+     */
+    @Nullable
+    public String setArg(String key, String value) {
+        return args.put(key, value);
+    }
+
+    /**
      * Gets the result of the fishing action.
      *
      * @return The fishing result, which can be either SUCCESS or FAILURE.
      */
     public Result getResult() {
         return result;
+    }
+
+    /**
+     * Get the fish hook entity.
+     *
+     * @return fish hook
+     */
+    public FishHook getFishHook() {
+        return fishHook;
     }
 
     /**
@@ -109,6 +133,24 @@ public class FishingResultEvent extends PlayerEvent implements Cancellable {
      */
     public int getAmount() {
         return Integer.parseInt(Optional.ofNullable(getArg("{amount}")).orElse("1"));
+    }
+
+    /**
+     * Set the loot amount (Only works for items)
+     *
+     * @param amount amount
+     */
+    public void setAmount(int amount) {
+        setArg("{amount}", String.valueOf(amount));
+    }
+
+    /**
+     * Set the score to get in competition
+     *
+     * @param score score
+     */
+    public void setScore(double score) {
+        setArg("{SCORE}", String.valueOf(score));
     }
 
     /**

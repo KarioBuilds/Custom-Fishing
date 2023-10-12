@@ -28,6 +28,7 @@ import net.momirealms.customfishing.api.util.LogUtils;
 import net.momirealms.customfishing.api.util.OffsetUtils;
 import net.momirealms.customfishing.mechanic.requirement.RequirementManagerImpl;
 import net.momirealms.customfishing.util.ClassUtils;
+import net.momirealms.customfishing.util.ConfigUtils;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.jetbrains.annotations.Nullable;
@@ -39,6 +40,7 @@ import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
+@SuppressWarnings("DuplicatedCode")
 public class GameManagerImpl implements GameManager {
 
     private final CustomFishingPlugin plugin;
@@ -54,9 +56,13 @@ public class GameManagerImpl implements GameManager {
     }
 
     private void registerInbuiltGames() {
-        this.registerAccurateClickGame();
         this.registerHoldGame();
+        this.registerHoldV2Game();
         this.registerTensionGame();
+        this.registerClickGame();
+        this.registerAccurateClickGame();
+        this.registerAccurateClickV2Game();
+        this.registerAccurateClickV3Game();
     }
 
     public void load() {
@@ -208,16 +214,16 @@ public class GameManagerImpl implements GameManager {
             var totalWidth = chances.size() * widthPerSection - 1;
             var pointerOffset = section.getInt("arguments.pointer-offset");
             var pointerWidth = section.getInt("arguments.pointer-width");
-            var title = section.getStringList("title");
+            var title = ConfigUtils.stringListArgs(section.get("title"));
             var font = section.getString("subtitle.font");
             var barImage = section.getString("subtitle.bar");
             var pointerImage = section.getString("subtitle.pointer");
 
             return (player, fishHook, settings) -> new AbstractGamingPlayer(player, fishHook, settings) {
 
-                private int progress;
-                private boolean face;
-                private String sendTitle = title.get(ThreadLocalRandom.current().nextInt(title.size()));
+                private int progress = -1;
+                private boolean face = true;
+                private final String sendTitle = title.get(ThreadLocalRandom.current().nextInt(title.size()));
 
                 @Override
                 public void arrangeTask() {
@@ -388,12 +394,10 @@ public class GameManagerImpl implements GameManager {
                             + OffsetUtils.getOffsetChars((int) (barEffectiveWidth - judgement_position - judgementAreaWidth))
                             + OffsetUtils.getOffsetChars((int) (-barEffectiveWidth - 1 + fish_position))
                             + FontUtils.surroundWithFont(pointerImage, font)
-                            + OffsetUtils.getOffsetChars((int) (barEffectiveWidth - fish_position - pointerIconWidth + 1))
-                            ;
+                            + OffsetUtils.getOffsetChars((int) (barEffectiveWidth - fish_position - pointerIconWidth + 1));
                     AdventureManagerImpl.getInstance().sendTitle(
                             player,
-                            tip != null && !played ? tip : title.replace("{progress}", progress[(int) ((hold_time / time_requirement) * progress.length)])
-                            ,
+                            tip != null && !played ? tip : title.replace("{progress}", progress[(int) ((hold_time / time_requirement) * progress.length)]),
                             bar,
                             0,
                             500,
@@ -487,6 +491,351 @@ public class GameManagerImpl implements GameManager {
                     AdventureManagerImpl.getInstance().sendTitle(
                             player,
                             tip != null && !played ? tip : title.replace("{tension}", tension[(int) ((strain / ultimateTension) * tension.length)]),
+                            bar,
+                            0,
+                            500,
+                            0
+                    );
+                }
+            };
+        }));
+    }
+
+    private void registerClickGame() {
+        this.registerGameType("click", (section -> {
+
+            var title = section.getString("title","<red>{click}");
+            var subtitle = section.getString("subtitle", "<gray>Click <white>{clicks} <gray>times to win. Time left <white>{time}s");
+
+            return (player, fishHook, settings) -> new AbstractGamingPlayer(player, fishHook, settings) {
+
+                private int clickedTimes;
+                private final int requiredTimes = settings.getDifficulty();
+
+                @Override
+                public void arrangeTask() {
+                    this.task = CustomFishingPlugin.get().getScheduler().runTaskAsyncTimer(this, 50, 50, TimeUnit.MILLISECONDS);
+                }
+
+                @Override
+                public void run() {
+                    super.run();
+                    showUI();
+                }
+
+                @Override
+                public boolean onRightClick() {
+                    clickedTimes++;
+                    if (clickedTimes >= requiredTimes) {
+                        setGameResult(true);
+                        endGame();
+                    }
+                    return true;
+                }
+
+                public void showUI() {
+                    AdventureManagerImpl.getInstance().sendTitle(
+                            player,
+                            title.replace("{click}", String.valueOf(clickedTimes)),
+                            subtitle.replace("{clicks}", String.valueOf(requiredTimes)).replace("{time}", String.format("%.1f", ((double) deadline - System.currentTimeMillis())/1000)),
+                            0,
+                            500,
+                            0
+                    );
+                }
+            };
+        }));
+    }
+
+    private void registerAccurateClickV2Game() {
+
+        this.registerGameType("accurate_click_v2", (section -> {
+
+            var barWidth = ConfigUtils.getIntegerPair(section.getString("title.total-width", "15~20"));
+            var barSuccess = ConfigUtils.getIntegerPair(section.getString("title.success-width","3~4"));
+            var barBody = section.getString("title.body","");
+            var barPointer = section.getString("title.pointer", "");
+            var barTarget = section.getString("title.target","");
+
+            var subtitle = section.getString("subtitle", "<gray>Reel in at the most critical moment");
+
+            return (player, fishHook, settings) -> new AbstractGamingPlayer(player, fishHook, settings) {
+
+                private final int totalWidth = ThreadLocalRandom.current().nextInt(barWidth.right() - barWidth.left() + 1) + barWidth.left();
+                private final int successWidth = ThreadLocalRandom.current().nextInt(barSuccess.right() - barSuccess.left() + 1) + barSuccess.left();
+                private final int successPosition = ThreadLocalRandom.current().nextInt((totalWidth - successWidth + 1)) + 1;
+                private int currentIndex = 0;
+                private int timer = 0;
+                private boolean face = true;
+
+                @Override
+                public void arrangeTask() {
+                    this.task = CustomFishingPlugin.get().getScheduler().runTaskAsyncTimer(this, 50, 50, TimeUnit.MILLISECONDS);
+                }
+
+                @Override
+                public void run() {
+                    super.run();
+                    timer++;
+                    if (timer % (21 - settings.getDifficulty() / 5) == 0) {
+                        movePointer();
+                    }
+                    showUI();
+                }
+
+                private void movePointer() {
+                    if (face) {
+                        currentIndex++;
+                        if (currentIndex >= totalWidth - 1) {
+                            face = false;
+                        }
+                    } else {
+                        currentIndex--;
+                        if (currentIndex <= 0) {
+                            face = true;
+                        }
+                    }
+                }
+
+                public void showUI() {
+                    StringBuilder stringBuilder = new StringBuilder();
+                    for (int i = 1; i <= totalWidth; i++) {
+                        if (i == currentIndex + 1) {
+                            stringBuilder.append(barPointer);
+                            continue;
+                        }
+                        if (i >= successPosition && i <= successPosition + successWidth - 1) {
+                            stringBuilder.append(barTarget);
+                            continue;
+                        }
+                        stringBuilder.append(barBody);
+                    }
+
+                    AdventureManagerImpl.getInstance().sendTitle(
+                            player,
+                            stringBuilder.toString(),
+                            subtitle,
+                            0,
+                            500,
+                            0
+                    );
+                }
+
+                @Override
+                public boolean isSuccessful() {
+                    return currentIndex + 1 <= successPosition + successWidth - 1 && currentIndex + 1 >= successPosition;
+                }
+            };
+        }));
+    }
+
+    private void registerAccurateClickV3Game() {
+
+        this.registerGameType("accurate_click_v3", (section -> {
+
+            var font = section.getString("subtitle.font");
+            var pointerImage = section.getString("subtitle.pointer");
+            var barImage = section.getString("subtitle.bar");
+            var judgementAreaImage = section.getString("subtitle.judgment-area");
+            var titles = ConfigUtils.stringListArgs(section.get("title"));
+
+            var barEffectiveWidth = section.getInt("arguments.bar-effective-area-width");
+            var judgementAreaWidth = section.getInt("arguments.judgment-area-width");
+            var judgementAreaOffset = section.getInt("arguments.judgment-area-offset");
+            var pointerIconWidth = section.getInt("arguments.pointer-icon-width");
+            var pointerOffset = section.getInt("arguments.pointer-offset");
+
+            return (player, fishHook, settings) -> new AbstractGamingPlayer(player, fishHook, settings) {
+
+                private int progress = -1;
+                private boolean face = true;
+                private final int judgement_position = ThreadLocalRandom.current().nextInt(barEffectiveWidth - judgementAreaWidth + 1);
+                private final String title = titles.get(ThreadLocalRandom.current().nextInt(titles.size()));
+
+                @Override
+                public void arrangeTask() {
+                    var period = ((double) 10*(200-settings.getDifficulty()))/((double) (1+4*settings.getDifficulty()));
+                    this.task = CustomFishingPlugin.get().getScheduler().runTaskAsyncTimer(
+                            this,
+                            50,
+                            (long) period,
+                            TimeUnit.MILLISECONDS
+                    );
+                }
+
+                @Override
+                public void run() {
+                    super.run();
+                    if (face) {
+                        progress++;
+                        if (progress >= barEffectiveWidth - 1) {
+                            face = false;
+                        }
+                    } else {
+                        progress--;
+                        if (progress <= 0) {
+                            face = true;
+                        }
+                    }
+                    showUI();
+                }
+
+                public void showUI() {
+                    String bar = FontUtils.surroundWithFont(barImage, font)
+                            + OffsetUtils.getOffsetChars(judgementAreaOffset + judgement_position)
+                            + FontUtils.surroundWithFont(judgementAreaImage, font)
+                            + OffsetUtils.getOffsetChars(barEffectiveWidth - judgement_position - judgementAreaWidth)
+                            + OffsetUtils.getOffsetChars(progress + pointerOffset)
+                            + FontUtils.surroundWithFont(pointerImage, font)
+                            + OffsetUtils.getOffsetChars(barEffectiveWidth - progress - pointerIconWidth + 1);
+                    AdventureManagerImpl.getInstance().sendTitle(
+                            player,
+                            title,
+                            bar,
+                            0,
+                            500,
+                            0
+                    );
+                }
+
+                @Override
+                public boolean isSuccessful() {
+                    return progress < judgement_position + judgementAreaWidth && progress >= judgement_position;
+                }
+            };
+        }));
+    }
+
+    private void registerHoldV2Game() {
+        this.registerGameType("hold_v2", (section -> {
+
+            var timeRequirements = section.getIntegerList("hold-time-requirements").stream().mapToInt(Integer::intValue).toArray();
+            var judgementAreaImage = section.getString("subtitle.judgment-area");
+            var pointerImage = section.getString("subtitle.pointer");
+            var barEffectiveWidth = section.getInt("arguments.bar-effective-area-width");
+            var judgementAreaOffset = section.getInt("arguments.judgment-area-offset");
+            var judgementAreaWidth = section.getInt("arguments.judgment-area-width");
+            var pointerIconWidth = section.getInt("arguments.pointer-icon-width");
+            var punishment = section.getDouble("arguments.punishment");
+            var progress = section.getStringList("progress").toArray(new String[0]);
+            var waterResistance = section.getDouble("arguments.water-resistance", 0.15);
+            var pullingStrength = section.getDouble("arguments.pulling-strength", 3);
+            var looseningLoss = section.getDouble("arguments.loosening-strength-loss", 0.5);
+
+            var title = section.getString("title", "{progress}");
+            var font = section.getString("subtitle.font");
+            var barImage = section.getString("subtitle.bar");
+            var tip = section.getString("tip");
+
+            return (player, fishHook, settings) -> new AbstractGamingPlayer(player, fishHook, settings) {
+                private double hold_time;
+                private double judgement_position;
+                private double fish_position;
+                private double judgement_velocity;
+                private double fish_velocity;
+                private int timer;
+                private final int time_requirement = timeRequirements[ThreadLocalRandom.current().nextInt(timeRequirements.length)] * 1000;
+                private boolean played;
+
+                @Override
+                public void arrangeTask() {
+                    this.judgement_position = (double) (barEffectiveWidth - judgementAreaWidth) / 2;
+                    this.task = CustomFishingPlugin.get().getScheduler().runTaskAsyncTimer(
+                            this,
+                            50,
+                            33,
+                            TimeUnit.MILLISECONDS
+                    );
+                }
+
+                @Override
+                public void run() {
+                    super.run();
+                    if (timer < 40 - (settings.getDifficulty() / 10)) {
+                        timer++;
+                    } else {
+                        timer = 0;
+                        if (Math.random() > ((double) 25 / (settings.getDifficulty() + 100))) {
+                            burst();
+                        }
+                    }
+                    judgement_position += judgement_velocity;
+                    fish_position += fish_velocity;
+                    fraction();
+                    calibrate();
+                    if (fish_position >= judgement_position && fish_position + pointerIconWidth <= judgement_position + judgementAreaWidth) {
+                        hold_time += 33;
+                    } else {
+                        hold_time -= punishment * 33;
+                    }
+                    if (hold_time >= time_requirement) {
+                        setGameResult(true);
+                        endGame();
+                        return;
+                    }
+                    hold_time = Math.max(0, Math.min(hold_time, time_requirement));
+                    showUI();
+                }
+
+                private void burst() {
+                    if (Math.random() < (judgement_position / barEffectiveWidth)) {
+                        judgement_velocity = -1 - 0.8 * Math.random() * ((double) settings.getDifficulty() / 15);
+                    } else {
+                        judgement_velocity = 1 + 0.8 * Math.random() * ((double) settings.getDifficulty() / 15);
+                    }
+                }
+
+                private void fraction() {
+                    if (judgement_velocity > 0) {
+                        judgement_velocity -= waterResistance;
+                        if (judgement_velocity < 0) judgement_velocity = 0;
+                    } else {
+                        judgement_velocity += waterResistance;
+                        if (judgement_velocity > 0) judgement_velocity = 0;
+                    }
+                    fish_velocity -= looseningLoss;
+                    if (fish_velocity < -10 * looseningLoss) {
+                        fish_velocity = -10 * looseningLoss;
+                    }
+                }
+
+                private void calibrate() {
+                    if (fish_position < 0) {
+                        fish_position = 0;
+                        fish_velocity = 0;
+                    }
+                    if (fish_position + pointerIconWidth > barEffectiveWidth) {
+                        fish_position = barEffectiveWidth - pointerIconWidth;
+                        fish_velocity = 0;
+                    }
+                    if (judgement_position < 0) {
+                        judgement_position = 0;
+                        judgement_velocity = 0;
+                    }
+                    if (judgement_position + judgementAreaWidth > barEffectiveWidth) {
+                        judgement_position = barEffectiveWidth - judgementAreaWidth;
+                        judgement_velocity = 0;
+                    }
+                }
+
+                @Override
+                public boolean onRightClick() {
+                    played = true;
+                    fish_velocity = pullingStrength;
+                    return true;
+                }
+
+                public void showUI() {
+                    String bar = FontUtils.surroundWithFont(barImage, font)
+                            + OffsetUtils.getOffsetChars((int) (judgementAreaOffset + judgement_position))
+                            + FontUtils.surroundWithFont(judgementAreaImage, font)
+                            + OffsetUtils.getOffsetChars((int) (barEffectiveWidth - judgement_position - judgementAreaWidth))
+                            + OffsetUtils.getOffsetChars((int) (-barEffectiveWidth - 1 + fish_position))
+                            + FontUtils.surroundWithFont(pointerImage, font)
+                            + OffsetUtils.getOffsetChars((int) (barEffectiveWidth - fish_position - pointerIconWidth + 1));
+                    AdventureManagerImpl.getInstance().sendTitle(
+                            player,
+                            tip != null && !played ? tip : title.replace("{progress}", progress[(int) ((hold_time / time_requirement) * progress.length)]),
                             bar,
                             0,
                             500,

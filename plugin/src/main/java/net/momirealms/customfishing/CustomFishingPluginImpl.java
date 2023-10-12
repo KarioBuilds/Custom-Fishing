@@ -41,6 +41,7 @@ import net.momirealms.customfishing.mechanic.hook.HookManagerImpl;
 import net.momirealms.customfishing.mechanic.item.ItemManagerImpl;
 import net.momirealms.customfishing.mechanic.loot.LootManagerImpl;
 import net.momirealms.customfishing.mechanic.market.MarketManagerImpl;
+import net.momirealms.customfishing.mechanic.misc.ChatCatcherManager;
 import net.momirealms.customfishing.mechanic.misc.CoolDownManager;
 import net.momirealms.customfishing.mechanic.requirement.RequirementManagerImpl;
 import net.momirealms.customfishing.mechanic.statistic.StatisticsManagerImpl;
@@ -50,6 +51,7 @@ import net.momirealms.customfishing.setting.CFConfig;
 import net.momirealms.customfishing.setting.CFLocale;
 import net.momirealms.customfishing.storage.StorageManagerImpl;
 import net.momirealms.customfishing.version.VersionManagerImpl;
+import org.bstats.bukkit.Metrics;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.event.HandlerList;
@@ -63,6 +65,7 @@ public class CustomFishingPluginImpl extends CustomFishingPlugin {
 
     private static ProtocolManager protocolManager;
     private CoolDownManager coolDownManager;
+    private ChatCatcherManager chatCatcherManager;
 
     public CustomFishingPluginImpl() {
         super();
@@ -102,7 +105,10 @@ public class CustomFishingPluginImpl extends CustomFishingPlugin {
         this.coolDownManager = new CoolDownManager(this);
         this.totemManager = new TotemManagerImpl(this);
         this.hookManager = new HookManagerImpl(this);
+        this.chatCatcherManager = new ChatCatcherManager(this);
         this.reload();
+
+        if (CFConfig.metrics) new Metrics(this, 16648);
         if (CFConfig.updateChecker)
             this.versionManager.checkUpdate().thenAccept(result -> {
                 if (!result) this.getAdventure().sendConsoleMessage("[CustomFishing] You are using the latest version.");
@@ -133,6 +139,7 @@ public class CustomFishingPluginImpl extends CustomFishingPlugin {
         ((TotemManagerImpl) this.totemManager).disable();
         ((HookManagerImpl) this.hookManager).disable();
         this.coolDownManager.disable();
+        this.chatCatcherManager.disable();
         this.commandManager.unload();
         HandlerList.unregisterAll(this);
     }
@@ -182,6 +189,8 @@ public class CustomFishingPluginImpl extends CustomFishingPlugin {
         this.commandManager.load();
         this.coolDownManager.unload();
         this.coolDownManager.load();
+        this.chatCatcherManager.unload();
+        this.chatCatcherManager.load();
     }
 
     /**
@@ -191,21 +200,31 @@ public class CustomFishingPluginImpl extends CustomFishingPlugin {
         String mavenRepo = TimeZone.getDefault().getID().startsWith("Asia") ?
                 "https://maven.aliyun.com/repository/public/" : "https://repo.maven.apache.org/maven2/";
         LibraryLoader.loadDependencies(
-                "org.apache.commons:commons-pool2:2.11.1", mavenRepo,
-                "redis.clients:jedis:5.0.0", mavenRepo,
+                "org.apache.commons:commons-pool2:2.12.0", mavenRepo,
+                "redis.clients:jedis:5.0.1", mavenRepo,
                 "dev.dejvokep:boosted-yaml:1.3.1", mavenRepo,
                 "com.zaxxer:HikariCP:5.0.1", mavenRepo,
                 "net.objecthunter:exp4j:0.4.8", mavenRepo,
                 "org.mariadb.jdbc:mariadb-java-client:3.2.0", mavenRepo,
-                "mysql:mysql-connector-java:8.0.30", mavenRepo,
-                "commons-io:commons-io:2.13.0", mavenRepo,
+                "com.mysql:mysql-connector-j:8.0.33", mavenRepo,
+                "commons-io:commons-io:2.14.0", mavenRepo,
                 "com.google.code.gson:gson:2.10.1", mavenRepo,
-                "com.h2database:h2:2.2.220", mavenRepo,
+                "com.h2database:h2:2.2.224", mavenRepo,
                 "org.mongodb:mongodb-driver-sync:4.10.2", mavenRepo,
                 "org.mongodb:mongodb-driver-core:4.10.2", mavenRepo,
                 "org.mongodb:bson:4.10.2", mavenRepo,
-                "org.xerial:sqlite-jdbc:3.42.0.0", mavenRepo,
-                "dev.jorel:commandapi-bukkit-shade:9.1.0", mavenRepo
+                "org.xerial:sqlite-jdbc:3.43.0.0", mavenRepo,
+                "dev.jorel:commandapi-bukkit-shade:9.2.0", mavenRepo,
+                "xyz.xenondevs.invui:invui-core:1.19", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access:1.19", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r8:1.19", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r9:1.19", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r10:1.19", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r11:1.19", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r12:1.19", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r13:1.19", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r14:1.19", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r15:1.19", "https://repo.xenondevs.xyz/releases/"
         );
     }
 
@@ -287,6 +306,15 @@ public class CustomFishingPluginImpl extends CustomFishingPlugin {
      */
     public CoolDownManager getCoolDownManager() {
         return coolDownManager;
+    }
+
+    /**
+     * Gets the ChatCatcherManager instance associated with the plugin.
+     *
+     * @return The ChatCatcherManager instance.
+     */
+    public ChatCatcherManager getChatCatcherManager() {
+        return chatCatcherManager;
     }
 
     /**

@@ -39,8 +39,19 @@ public class LocalRankingImpl implements Ranking {
      *
      * @param competitionPlayer The CompetitionPlayer to add.
      */
+    @Override
     public void addPlayer(CompetitionPlayer competitionPlayer) {
         competitionPlayers.add(competitionPlayer);
+    }
+
+    /**
+     * Removes a competition player from the ranking.
+     *
+     * @param player player's name
+     */
+    @Override
+    public void removePlayer(String player) {
+        competitionPlayers.removeIf(e -> e.getPlayer().equals(player));
     }
 
     /**
@@ -72,6 +83,20 @@ public class LocalRankingImpl implements Ranking {
             if (competitionPlayer.getPlayer().equals(player)) {
                 return competitionPlayer;
             }
+        }
+        return null;
+    }
+
+    @Override
+    public CompetitionPlayer getCompetitionPlayer(int rank) {
+        int i = 1;
+        int size = getSize();
+        if (rank > size) return null;
+        for (CompetitionPlayer player : competitionPlayers) {
+            if (rank == i) {
+                return player;
+            }
+            i++;
         }
         return null;
     }
