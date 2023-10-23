@@ -3,7 +3,7 @@ package net.momirealms.customfishing.gui.page.item;
 import net.momirealms.customfishing.adventure.AdventureManagerImpl;
 import net.momirealms.customfishing.adventure.component.ShadedAdventureComponentWrapper;
 import net.momirealms.customfishing.api.CustomFishingPlugin;
-import net.momirealms.customfishing.gui.ItemPage;
+import net.momirealms.customfishing.gui.SectionPage;
 import net.momirealms.customfishing.gui.icon.BackGroundItem;
 import net.momirealms.customfishing.gui.icon.BackToPageItem;
 import net.momirealms.customfishing.gui.icon.NextPageItem;
@@ -30,7 +30,7 @@ import xyz.xenondevs.invui.window.AnvilWindow;
 import java.util.ArrayList;
 import java.util.List;
 
-public class ItemEditor implements ItemPage {
+public class ItemEditor implements SectionPage {
 
     private final Player player;
     private final ItemSelector itemSelector;
