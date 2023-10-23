@@ -59,6 +59,7 @@ import org.bukkit.event.player.PlayerAttemptPickupItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerItemMendEvent;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.Damageable;
@@ -445,13 +446,14 @@ public class ItemManagerImpl implements ItemManager, Listener {
     /**
      * Decreases the durability of an ItemStack by a specified amount and optionally updates its lore.
      *
+     * @param player      Player
      * @param itemStack   The ItemStack to modify.
      * @param amount      The amount by which to decrease the durability.
      * @param updateLore  Whether to update the lore of the ItemStack.
      */
     @Override
-    public void decreaseDurability(ItemStack itemStack, int amount, boolean updateLore) {
-        ItemUtils.decreaseDurability(itemStack, amount, updateLore);
+    public void decreaseDurability(Player player, ItemStack itemStack, int amount, boolean updateLore) {
+        ItemUtils.decreaseDurability(player, itemStack, amount, updateLore);
     }
 
     /**
@@ -857,12 +859,13 @@ public class ItemManagerImpl implements ItemManager, Listener {
     public void onInteractWithUtils(PlayerInteractEvent event) {
         if (event.useItemInHand() == Event.Result.DENY)
             return;
+        if (event.getHand() != EquipmentSlot.HAND)
+            return;
         ItemStack itemStack = event.getPlayer().getInventory().getItemInMainHand();
         if (itemStack.getType() == Material.AIR)
             return;
-        if (event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_AIR || event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK)
+        if (event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_AIR && event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK)
             return;
-
         String id = getAnyPluginItemID(itemStack);
         EffectCarrier carrier = plugin.getEffectManager().getEffectCarrier("util", id);
         if (carrier == null)
