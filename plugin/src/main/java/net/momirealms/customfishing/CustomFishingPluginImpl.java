@@ -23,6 +23,7 @@ import de.tr7zw.changeme.nbtapi.utils.MinecraftVersion;
 import de.tr7zw.changeme.nbtapi.utils.VersionChecker;
 import net.momirealms.customfishing.adventure.AdventureManagerImpl;
 import net.momirealms.customfishing.api.CustomFishingPlugin;
+import net.momirealms.customfishing.api.event.CustomFishingReloadEvent;
 import net.momirealms.customfishing.api.util.LogUtils;
 import net.momirealms.customfishing.api.util.ReflectionUtils;
 import net.momirealms.customfishing.command.CommandManagerImpl;
@@ -107,6 +108,7 @@ public class CustomFishingPluginImpl extends CustomFishingPlugin {
         this.hookManager = new HookManagerImpl(this);
         this.chatCatcherManager = new ChatCatcherManager(this);
         this.reload();
+        super.initialized = true;
 
         if (CFConfig.metrics) new Metrics(this, 16648);
         if (CFConfig.updateChecker)
@@ -131,8 +133,8 @@ public class CustomFishingPluginImpl extends CustomFishingPlugin {
         ((RequirementManagerImpl) this.requirementManager).disable();
         ((SchedulerImpl) this.scheduler).shutdown();
         ((IntegrationManagerImpl) this.integrationManager).disable();
-        ((StorageManagerImpl) this.storageManager).disable();
         ((CompetitionManagerImpl) this.competitionManager).disable();
+        ((StorageManagerImpl) this.storageManager).disable();
         ((PlaceholderManagerImpl) this.placeholderManager).disable();
         ((StatisticsManagerImpl) this.statisticsManager).disable();
         ((ActionManagerImpl) this.actionManager).disable();
@@ -191,6 +193,9 @@ public class CustomFishingPluginImpl extends CustomFishingPlugin {
         this.coolDownManager.load();
         this.chatCatcherManager.unload();
         this.chatCatcherManager.load();
+
+        CustomFishingReloadEvent event = new CustomFishingReloadEvent(this);
+        Bukkit.getPluginManager().callEvent(event);
     }
 
     /**
@@ -215,16 +220,16 @@ public class CustomFishingPluginImpl extends CustomFishingPlugin {
                 "org.mongodb:bson:4.10.2", mavenRepo,
                 "org.xerial:sqlite-jdbc:3.43.0.0", mavenRepo,
                 "dev.jorel:commandapi-bukkit-shade:9.2.0", mavenRepo,
-                "xyz.xenondevs.invui:invui-core:1.19", "https://repo.xenondevs.xyz/releases/",
-                "xyz.xenondevs.invui:inventory-access:1.19", "https://repo.xenondevs.xyz/releases/",
-                "xyz.xenondevs.invui:inventory-access-r8:1.19", "https://repo.xenondevs.xyz/releases/",
-                "xyz.xenondevs.invui:inventory-access-r9:1.19", "https://repo.xenondevs.xyz/releases/",
-                "xyz.xenondevs.invui:inventory-access-r10:1.19", "https://repo.xenondevs.xyz/releases/",
-                "xyz.xenondevs.invui:inventory-access-r11:1.19", "https://repo.xenondevs.xyz/releases/",
-                "xyz.xenondevs.invui:inventory-access-r12:1.19", "https://repo.xenondevs.xyz/releases/",
-                "xyz.xenondevs.invui:inventory-access-r13:1.19", "https://repo.xenondevs.xyz/releases/",
-                "xyz.xenondevs.invui:inventory-access-r14:1.19", "https://repo.xenondevs.xyz/releases/",
-                "xyz.xenondevs.invui:inventory-access-r15:1.19", "https://repo.xenondevs.xyz/releases/"
+                "xyz.xenondevs.invui:invui-core:1.23", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access:1.23", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r8:1.23", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r9:1.23", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r10:1.23", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r11:1.23", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r12:1.23", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r13:1.23", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r14:1.23", "https://repo.xenondevs.xyz/releases/",
+                "xyz.xenondevs.invui:inventory-access-r15:1.23", "https://repo.xenondevs.xyz/releases/"
         );
     }
 

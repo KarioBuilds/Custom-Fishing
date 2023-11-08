@@ -237,8 +237,7 @@ public class GameManagerImpl implements GameManager {
                 }
 
                 @Override
-                public void run() {
-                    super.run();
+                public void onTick() {
                     if (face) progress++;
                     else progress--;
                     if (progress > totalWidth) {
@@ -261,6 +260,7 @@ public class GameManagerImpl implements GameManager {
 
                 @Override
                 public boolean isSuccessful() {
+                    if (isTimeOut) return false;
                     int last = progress / widthPerSection;
                     return (Math.random() < successRate[last]);
                 }
@@ -311,8 +311,7 @@ public class GameManagerImpl implements GameManager {
                 }
 
                 @Override
-                public void run() {
-                    super.run();
+                public void onTick() {
                     if (player.isSneaking()) addV();
                     else reduceV();
                     if (timer < 40 - (settings.getDifficulty() / 10)) {
@@ -442,8 +441,7 @@ public class GameManagerImpl implements GameManager {
                 }
 
                 @Override
-                public void run() {
-                    super.run();
+                public void onTick() {
                     if (struggling_time <= 0) {
                         if (Math.random() < ((double) settings.getDifficulty() / 4000)) {
                             struggling_time = (int) (10 + Math.random() * (settings.getDifficulty() / 4));
@@ -518,8 +516,7 @@ public class GameManagerImpl implements GameManager {
                 }
 
                 @Override
-                public void run() {
-                    super.run();
+                public void onTick() {
                     showUI();
                 }
 
@@ -574,8 +571,7 @@ public class GameManagerImpl implements GameManager {
                 }
 
                 @Override
-                public void run() {
-                    super.run();
+                public void onTick() {
                     timer++;
                     if (timer % (21 - settings.getDifficulty() / 5) == 0) {
                         movePointer();
@@ -664,8 +660,7 @@ public class GameManagerImpl implements GameManager {
                 }
 
                 @Override
-                public void run() {
-                    super.run();
+                public void onTick() {
                     if (face) {
                         progress++;
                         if (progress >= barEffectiveWidth - 1) {
@@ -749,8 +744,7 @@ public class GameManagerImpl implements GameManager {
                 }
 
                 @Override
-                public void run() {
-                    super.run();
+                public void onTick() {
                     if (timer < 40 - (settings.getDifficulty() / 10)) {
                         timer++;
                     } else {

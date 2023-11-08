@@ -44,13 +44,13 @@ dependencies {
     compileOnly("com.github.Archy-X:AureliumSkills:Beta1.3.21")
     compileOnly("com.github.MilkBowl:VaultAPI:1.7")
     compileOnly("org.betonquest:betonquest:2.0.0-SNAPSHOT")
-    compileOnly("xyz.xenondevs.invui:invui:1.19")
+    compileOnly("xyz.xenondevs.invui:invui:1.23")
+    compileOnly("com.github.Xiao-MoMi:Custom-Crops:3.3.1.8")
 
     // local jars
     compileOnly(files("libs/AdvancedEnchantments-api.jar"))
     compileOnly(files("libs/BattlePass-4.0.6-api.jar"))
     compileOnly(files("libs/RealisticSeasons-api.jar"))
-    compileOnly(files("libs/CustomCrops-api.jar"))
     compileOnly(files("libs/mcMMO-api.jar"))
     compileOnly(files("libs/ClueScrolls-4.8.7-api.jar"))
     compileOnly(files("libs/notquests-5.17.1.jar"))

@@ -26,6 +26,7 @@ import dev.dejvokep.boostedyaml.settings.updater.UpdaterSettings;
 import net.momirealms.customfishing.api.CustomFishingPlugin;
 import net.momirealms.customfishing.api.util.LogUtils;
 import net.momirealms.customfishing.api.util.OffsetUtils;
+import net.momirealms.customfishing.util.ConfigUtils;
 import org.bukkit.Material;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.event.EventPriority;
@@ -39,7 +40,7 @@ import java.util.Objects;
 public class CFConfig {
 
     // config version
-    public static String configVersion = "28";
+    public static String configVersion = "29";
     // Debug mode
     public static boolean debug;
     // language
@@ -69,12 +70,17 @@ public class CFConfig {
     public static String bagTitle;
     public static List<Material> bagWhiteListItems;
 
+    // Fishing wait time
+    public static boolean overrideVanilla;
+    public static int waterMinTime;
+    public static int waterMaxTime;
     // Lava fishing
     public static int lavaMinTime;
     public static int lavaMaxTime;
 
     // Competition
     public static boolean redisRanking;
+    public static List<String> serverGroup;
     public static int placeholderLimit;
 
     // Data save interval
@@ -136,6 +142,10 @@ public class CFConfig {
         bagStoreLoots = config.getBoolean("mechanics.fishing-bag.can-store-loot", false);
         bagWhiteListItems = config.getStringList("mechanics.fishing-bag.whitelist-items").stream().map(it -> Material.valueOf(it.toUpperCase(Locale.ENGLISH))).toList();
 
+        overrideVanilla = config.getBoolean("mechanics.fishing-wait-time.override-vanilla", false);
+        waterMinTime = config.getInt("mechanics.fishing-wait-time.min-wait-time", 100);
+        waterMaxTime = config.getInt("mechanics.fishing-wait-time.min-wait-time", 600);
+
         lavaMinTime = config.getInt("mechanics.lava-fishing.min-wait-time", 100);
         lavaMaxTime = config.getInt("mechanics.lava-fishing.max-wait-time", 600);
 
@@ -146,6 +156,7 @@ public class CFConfig {
 
         redisRanking = config.getBoolean("mechanics.competition.redis-ranking", false);
         placeholderLimit = config.getInt("mechanics.competition.placeholder-limit", 3);
+        serverGroup = ConfigUtils.stringListArgs(config.get("mechanics.competition.server-group","default"));
 
         dataSaveInterval = config.getInt("other-settings.data-saving-interval", 600);
         lockData = config.getBoolean("other-settings.lock-data", true);

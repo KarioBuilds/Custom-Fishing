@@ -35,13 +35,14 @@ public abstract class AbstractGamingPlayer implements GamingPlayer, Runnable {
     protected Player player;
     protected GameSettings settings;
     protected FishHook fishHook;
+    protected boolean isTimeOut;
 
     public AbstractGamingPlayer(Player player, FishHook hook, GameSettings settings) {
         this.player = player;
         this.fishHook = hook;
         this.settings = settings;
         this.manager = CustomFishingPlugin.get().getFishingManager();
-        this.deadline = System.currentTimeMillis() + settings.getTime() * 1000L;
+        this.deadline = (long) (System.currentTimeMillis() + settings.getTime() * 1000L);
         this.arrangeTask();
     }
 
@@ -64,6 +65,11 @@ public abstract class AbstractGamingPlayer implements GamingPlayer, Runnable {
     public boolean onRightClick() {
         endGame();
         return true;
+    }
+
+    @Override
+    public boolean onLeftClick() {
+        return false;
     }
 
     @Override
@@ -93,8 +99,15 @@ public abstract class AbstractGamingPlayer implements GamingPlayer, Runnable {
 
     @Override
     public void run() {
-        timeOutCheck();
+        if (timeOutCheck()) {
+            return;
+        }
         switchItemCheck();
+        onTick();
+    }
+
+    public void onTick() {
+
     }
 
     protected void endGame() {
@@ -105,17 +118,21 @@ public abstract class AbstractGamingPlayer implements GamingPlayer, Runnable {
         this.success = success;
     }
 
-    protected void timeOutCheck() {
+    protected boolean timeOutCheck() {
         if (System.currentTimeMillis() > deadline) {
+            isTimeOut = true;
             cancel();
             endGame();
+            return true;
         }
+        return false;
     }
 
     protected void switchItemCheck() {
         PlayerInventory playerInventory = player.getInventory();
         if (playerInventory.getItemInMainHand().getType() != Material.FISHING_ROD
-                && playerInventory.getItemInOffHand().getType() != Material.FISHING_ROD) {
+            && playerInventory.getItemInOffHand().getType() != Material.FISHING_ROD
+        ) {
             cancel();
             endGame();
         }
