@@ -17,6 +17,7 @@
 
 package net.momirealms.customfishing.command.sub;
 
+import de.tr7zw.changeme.nbtapi.NBTItem;
 import dev.jorel.commandapi.CommandAPICommand;
 import dev.jorel.commandapi.IStringTooltip;
 import dev.jorel.commandapi.StringTooltip;
@@ -32,6 +33,10 @@ import net.momirealms.customfishing.api.mechanic.condition.FishingPreparation;
 import net.momirealms.customfishing.api.mechanic.effect.EffectCarrier;
 import net.momirealms.customfishing.api.mechanic.effect.EffectModifier;
 import net.momirealms.customfishing.api.mechanic.effect.FishingEffect;
+import net.momirealms.customfishing.util.ConfigUtils;
+import net.momirealms.customfishing.util.NBTUtils;
+import org.bukkit.Material;
+import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,7 +54,8 @@ public class DebugCommand {
                         getBiomeCommand(),
                         getSeasonCommand(),
                         getGroupCommand(),
-                        getCategoryCommand()
+                        getCategoryCommand(),
+                        getNBTCommand()
                 );
     }
 
@@ -57,6 +63,20 @@ public class DebugCommand {
         return new CommandAPICommand("biome")
                 .executesPlayer((player, arg) -> {
                     AdventureManagerImpl.getInstance().sendMessage(player, BiomeAPI.getBiome(player.getLocation()));
+                });
+    }
+
+    public CommandAPICommand getNBTCommand() {
+        return new CommandAPICommand("nbt")
+                .executesPlayer((player, arg) -> {
+                    ItemStack item = player.getInventory().getItemInMainHand();
+                    if (item.getType() == Material.AIR)
+                        return;
+                    ArrayList<String> list = new ArrayList<>();
+                    ConfigUtils.mapToReadableStringList(NBTUtils.compoundToMap(new NBTItem(item)), list, 0, false);
+                    for (String line : list) {
+                        AdventureManagerImpl.getInstance().sendMessage(player, line);
+                    }
                 });
     }
 
@@ -110,6 +130,10 @@ public class DebugCommand {
                                 StringTooltip.ofString("false", "loots in water")
                         })))
                 .executesPlayer((player, arg) -> {
+                    if (player.getInventory().getItemInMainHand().getType() != Material.FISHING_ROD) {
+                        AdventureManagerImpl.getInstance().sendMessageWithPrefix(player, "<red>Please hold a fishing rod before using this command.");
+                        return;
+                    }
                     FishingEffect initialEffect = CustomFishingPlugin.get().getEffectManager().getInitialEffect();
                     FishingPreparation fishingPreparation = new FishingPreparation(player, CustomFishingPlugin.get());
                     boolean inLava = (boolean) arg.getOrDefault("lava fishing", false);

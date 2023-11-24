@@ -66,7 +66,7 @@ public class FishingPreparation extends Condition {
         NBTCompound cfCompound = nbtItem.getCompound("CustomFishing");
         if (cfCompound != null && cfCompound.hasTag("hook_id")) {
             String hookID = cfCompound.getString("hook_id");
-            super.insertArg("{hook}", rodItemID);
+            super.insertArg("{hook}", hookID);
             this.hasHook = true;
             EffectCarrier carrier = plugin.getEffectManager().getEffectCarrier("hook", hookID);
             if (carrier != null) {
@@ -91,11 +91,11 @@ public class FishingPreparation extends Condition {
                 this.insertArg("{in-bag}", "true");
                 for (int i = 0; i < fishingBag.getSize(); i++) {
                     ItemStack itemInBag = fishingBag.getItem(i);
-                    String bagItemID = plugin.getItemManager().getCustomFishingItemID(itemInBag);
-                    if (bagItemID == null) continue;
+                    String bagItemID = plugin.getItemManager().getAnyPluginItemID(itemInBag);
                     if (!hasBait) {
                         EffectCarrier effect = plugin.getEffectManager().getEffectCarrier("bait", bagItemID);
                         if (effect != null) {
+                            this.hasBait = true;
                             this.baitItemStack = itemInBag;
                             this.effects.add(effect);
                             super.insertArg("{bait}", bagItemID);
