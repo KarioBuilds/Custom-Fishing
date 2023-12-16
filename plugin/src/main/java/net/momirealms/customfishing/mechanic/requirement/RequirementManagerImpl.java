@@ -27,6 +27,7 @@ import net.momirealms.customfishing.api.mechanic.action.Action;
 import net.momirealms.customfishing.api.mechanic.competition.FishingCompetition;
 import net.momirealms.customfishing.api.mechanic.condition.Condition;
 import net.momirealms.customfishing.api.mechanic.loot.Loot;
+import net.momirealms.customfishing.api.mechanic.loot.WeightModifier;
 import net.momirealms.customfishing.api.mechanic.requirement.Requirement;
 import net.momirealms.customfishing.api.mechanic.requirement.RequirementExpansion;
 import net.momirealms.customfishing.api.mechanic.requirement.RequirementFactory;
@@ -44,6 +45,8 @@ import org.bukkit.configuration.MemorySection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -81,6 +84,16 @@ public class RequirementManagerImpl implements RequirementManager {
     public void disable() {
         this.requirementBuilderMap.clear();
         this.conditionalLootsMap.clear();
+    }
+
+    @Override
+    public boolean putLegacyLootToMap(String key, Requirement[] requirements, double weight) {
+        if (conditionalLootsMap.containsKey("LEGACY_" + key)) {
+            return false;
+        } else {
+            conditionalLootsMap.put("LEGACY_" + key, new ConditionalElement(requirements, List.of(Pair.of(key, (player, origin) -> weight + origin)), new HashMap<>()));
+            return true;
+        }
     }
 
     /**
@@ -199,6 +212,7 @@ public class RequirementManagerImpl implements RequirementManager {
         this.registerCompetitionRequirement();
         this.registerListRequirement();
         this.registerEnvironmentRequirement();
+        this.registerPotionEffectRequirement();
     }
 
     public HashMap<String, Double> getLootWithWeight(Condition condition) {
@@ -1139,8 +1153,56 @@ public class RequirementManagerImpl implements RequirementManager {
                 };
             } else {
                 LogUtils.warn("Wrong value format found at plugin-level requirement.");
-                return null;
+                return EmptyRequirement.instance;
             }
+        });
+    }
+
+
+    private void registerPotionEffectRequirement() {
+        registerRequirement("potion-effect", (args, actions, advanced) -> {
+            String potions = (String) args;
+            String[] split = potions.split("(<=|>=|<|>|==)", 2);
+            PotionEffectType type = PotionEffectType.getByName(split[0]);
+            if (type == null) {
+                LogUtils.warn("Potion effect doesn't exist: " + split[0]);
+                return EmptyRequirement.instance;
+            }
+            int required = Integer.parseInt(split[1]);
+            String operator = potions.substring(split[0].length(), potions.length() - split[1].length());
+            return condition -> {
+                int level = -1;
+                PotionEffect potionEffect = condition.getPlayer().getPotionEffect(type);
+                if (potionEffect != null) {
+                    level = potionEffect.getAmplifier();
+                }
+                boolean result = false;
+                switch (operator) {
+                    case ">=" -> {
+                        if (level >= required) result = true;
+                    }
+                    case ">" -> {
+                        if (level > required) result = true;
+                    }
+                    case "==" -> {
+                        if (level == required) result = true;
+                    }
+                    case "!=" -> {
+                        if (level != required) result = true;
+                    }
+                    case "<=" -> {
+                        if (level <= required) result = true;
+                    }
+                    case "<" -> {
+                        if (level < required) result = true;
+                    }
+                }
+                if (result) {
+                    return true;
+                }
+                if (advanced) triggerActions(actions, condition);
+                return false;
+            };
         });
     }
 
