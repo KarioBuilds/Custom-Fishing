@@ -23,6 +23,7 @@ import net.momirealms.customfishing.api.CustomFishingPlugin;
 import net.momirealms.customfishing.api.common.Key;
 import net.momirealms.customfishing.api.common.Pair;
 import net.momirealms.customfishing.api.common.Tuple;
+import net.momirealms.customfishing.api.event.FishingLootSpawnEvent;
 import net.momirealms.customfishing.api.manager.ItemManager;
 import net.momirealms.customfishing.api.manager.RequirementManager;
 import net.momirealms.customfishing.api.mechanic.GlobalSettings;
@@ -122,6 +123,7 @@ public class ItemManagerImpl implements ItemManager, Listener {
     }
 
     public void disable() {
+        HandlerList.unregisterAll(this);
         this.buildableItemMap.clear();
         this.itemLibraryMap.clear();
     }
@@ -328,7 +330,6 @@ public class ItemManagerImpl implements ItemManager, Listener {
             itemCFBuilder = CFBuilder.of("vanilla", material.toUpperCase(Locale.ENGLISH));
         }
         itemCFBuilder
-                .amount(section.getInt("amount", 1))
                 .stackable(section.getBoolean("stackable", true))
                 .size(ConfigUtils.getFloatPair(section.getString("size")))
                 .price((float) section.getDouble("price.base"), (float) section.getDouble("price.bonus"))
@@ -349,6 +350,12 @@ public class ItemManagerImpl implements ItemManager, Listener {
                 .head(section.getString("head64"))
                 .name(section.getString("display.name"))
                 .lore(section.getStringList("display.lore"));
+        if (section.get("amount") instanceof String s) {
+            Pair<Integer, Integer> pair = ConfigUtils.getIntegerPair(s);
+            itemCFBuilder.amount(pair.left(), pair.right());
+        } else {
+            itemCFBuilder.amount(section.getInt("amount", 1));
+        }
         return itemCFBuilder;
     }
 
@@ -418,6 +425,7 @@ public class ItemManagerImpl implements ItemManager, Listener {
 
     /**
      * Drops an item based on the provided loot, applying velocity from a hook location to a player location.
+     * This method would also trigger FishingLootSpawnEvent
      *
      * @param player         The player for whom the item is intended.
      * @param hookLocation   The location where the item will initially drop.
@@ -435,6 +443,13 @@ public class ItemManagerImpl implements ItemManager, Listener {
         if (item.getType() == Material.AIR) {
             return;
         }
+
+        FishingLootSpawnEvent spawnEvent = new FishingLootSpawnEvent(player, hookLocation, item);
+        Bukkit.getPluginManager().callEvent(spawnEvent);
+        if (spawnEvent.isCancelled()) {
+            return;
+        }
+
         Entity itemEntity = hookLocation.getWorld().dropItem(hookLocation, item);
         Vector vector = playerLocation.subtract(hookLocation).toVector().multiply(0.105);
         vector = vector.setY((vector.getY() + 0.22) * 1.18);
@@ -497,14 +512,15 @@ public class ItemManagerImpl implements ItemManager, Listener {
 
         private final String library;
         private final String id;
-        private int amount;
+        private int min_amount;
+        private int max_amount;
         private final LinkedHashMap<String, ItemPropertyEditor> editors;
 
         public CFBuilder(String library, String id) {
             this.id = id;
             this.library = library;
             this.editors = new LinkedHashMap<>();
-            this.amount = 1;
+            this.min_amount = (max_amount = 1);
         }
 
         public static CFBuilder of(String library, String id) {
@@ -544,7 +560,15 @@ public class ItemManagerImpl implements ItemManager, Listener {
 
         @Override
         public ItemBuilder amount(int amount) {
-            this.amount = amount;
+            this.min_amount = amount;
+            this.max_amount = amount;
+            return this;
+        }
+
+        @Override
+        public ItemBuilder amount(int min_amount, int max_amount) {
+            this.min_amount = min_amount;
+            this.max_amount = max_amount;
             return this;
         }
 
@@ -587,14 +611,14 @@ public class ItemManagerImpl implements ItemManager, Listener {
         @Override
         public ItemBuilder nbt(Map<String, Object> nbt) {
             if (nbt.size() == 0) return this;
-            editors.put("nbt", (player, nbtItem, placeholders) -> NBTUtils.setTagsFromBukkitYAML(nbtItem, nbt));
+            editors.put("nbt", (player, nbtItem, placeholders) -> NBTUtils.setTagsFromBukkitYAML(player, placeholders, nbtItem, nbt));
             return this;
         }
 
         @Override
         public ItemBuilder nbt(ConfigurationSection section) {
             if (section == null) return this;
-            editors.put("nbt", (player, nbtItem, placeholders) -> NBTUtils.setTagsFromBukkitYAML(nbtItem, section.getValues(false)));
+            editors.put("nbt", (player, nbtItem, placeholders) -> NBTUtils.setTagsFromBukkitYAML(player, placeholders, nbtItem, section.getValues(false)));
             return this;
         }
 
@@ -705,9 +729,11 @@ public class ItemManagerImpl implements ItemManager, Listener {
             editors.put("price", (player, nbtItem, placeholders) -> {
                 if (base != 0) {
                     placeholders.put("{base}", String.format("%.2f", base));
+                    placeholders.put("{BASE}", String.valueOf(base));
                 }
                 if (bonus != 0) {
                     placeholders.put("{bonus}", String.format("%.2f", bonus));
+                    placeholders.put("{BONUS}", String.valueOf(bonus));
                 }
                 float size = Float.parseFloat(placeholders.getOrDefault("{SIZE}", "0"));
                 double price = CustomFishingPlugin.get().getMarketManager().getFishPrice(
@@ -742,6 +768,8 @@ public class ItemManagerImpl implements ItemManager, Listener {
                 cfCompound.setFloat("size", random);
                 placeholders.put("{size}", String.format("%.2f", random));
                 placeholders.put("{SIZE}", String.valueOf(random));
+                placeholders.put("{min_size}", String.valueOf(size.left()));
+                placeholders.put("{max_size}", String.valueOf(size.right()));
             });
             return this;
         }
@@ -810,7 +838,7 @@ public class ItemManagerImpl implements ItemManager, Listener {
 
         @Override
         public int getAmount() {
-            return amount;
+            return ThreadLocalRandom.current().nextInt(min_amount, max_amount + 1);
         }
 
         @Override

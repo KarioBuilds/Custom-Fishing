@@ -32,6 +32,7 @@ import net.momirealms.customfishing.api.mechanic.action.ActionTrigger;
 import net.momirealms.customfishing.api.mechanic.condition.Condition;
 import net.momirealms.customfishing.api.mechanic.loot.Loot;
 import net.momirealms.customfishing.api.mechanic.requirement.Requirement;
+import net.momirealms.customfishing.api.scheduler.CancellableTask;
 import net.momirealms.customfishing.api.util.LogUtils;
 import net.momirealms.customfishing.compatibility.VaultHook;
 import net.momirealms.customfishing.compatibility.papi.PlaceholderManagerImpl;
@@ -95,6 +96,7 @@ public class ActionManagerImpl implements ActionManager {
         this.registerItemDurabilityAction();
         this.registerGiveItemAction();
         this.registerMoneyAction();
+        this.registerTimerAction();
     }
 
     // Method to load expansions and global event actions.
@@ -154,7 +156,6 @@ public class ActionManagerImpl implements ActionManager {
      * @return An Action object created based on the configuration, or an EmptyAction instance if the action type is invalid.
      */
     @Override
-    @NotNull
     public Action getAction(ConfigurationSection section) {
         ActionFactory factory = getActionFactory(section.getString("type"));
         if (factory == null) {
@@ -221,7 +222,9 @@ public class ActionManagerImpl implements ActionManager {
         // Iterate through all key-value pairs in the ConfigurationSection
         for (Map.Entry<String, Object> entry : section.getValues(false).entrySet()) {
             if (entry.getValue() instanceof ConfigurationSection innerSection) {
-                actionList.add(getAction(innerSection));
+                Action action = getAction(innerSection);
+                if (action != null)
+                    actionList.add(action);
             }
         }
         return actionList.toArray(new Action[0]);
@@ -627,7 +630,7 @@ public class ActionManagerImpl implements ActionManager {
                 return condition -> {
                     if (Math.random() > chance) return;
                     Player player = condition.getPlayer();
-                    ItemUtils.giveCertainAmountOfItem(player, CustomFishingPlugin.get().getItemManager().buildAnyPluginItemByID(player, id), amount);
+                    ItemUtils.giveCertainAmountOfItem(player, Objects.requireNonNull(CustomFishingPlugin.get().getItemManager().buildAnyPluginItemByID(player, id)), amount);
                 };
             } else {
                 LogUtils.warn("Illegal value format found at action: give-item");
@@ -703,8 +706,10 @@ public class ActionManagerImpl implements ActionManager {
         registerAction("delay", (args, chance) -> {
             List<Action> actions = new ArrayList<>();
             int delay;
+            boolean async;
             if (args instanceof ConfigurationSection section) {
                 delay = section.getInt("delay", 1);
+                async = section.getBoolean("async", false);
                 ConfigurationSection actionSection = section.getConfigurationSection("actions");
                 if (actionSection != null) {
                     for (Map.Entry<String, Object> entry : actionSection.getValues(false).entrySet()) {
@@ -715,14 +720,70 @@ public class ActionManagerImpl implements ActionManager {
                 }
             } else {
                 delay = 1;
+                async = false;
             }
             return condition -> {
                 if (Math.random() > chance) return;
-                plugin.getScheduler().runTaskSyncLater(() -> {
-                    for (Action action : actions) {
-                        action.trigger(condition);
+                if (async) {
+                    plugin.getScheduler().runTaskSyncLater(() -> {
+                        for (Action action : actions) {
+                            action.trigger(condition);
+                        }
+                    }, condition.getLocation(), delay * 50L, TimeUnit.MILLISECONDS);
+                } else {
+                    plugin.getScheduler().runTaskSyncLater(() -> {
+                        for (Action action : actions) {
+                            action.trigger(condition);
+                        }
+                    }, condition.getLocation(), delay * 50L, TimeUnit.MILLISECONDS);
+                }
+            };
+        });
+    }
+
+    private void registerTimerAction() {
+        registerAction("timer", (args, chance) -> {
+            List<Action> actions = new ArrayList<>();
+            int delay;
+            int duration;
+            int period;
+            boolean async;
+            if (args instanceof ConfigurationSection section) {
+                delay = section.getInt("delay", 2);
+                duration = section.getInt("duration", 20);
+                period = section.getInt("period", 2);
+                async = section.getBoolean("async", false);
+                ConfigurationSection actionSection = section.getConfigurationSection("actions");
+                if (actionSection != null) {
+                    for (Map.Entry<String, Object> entry : actionSection.getValues(false).entrySet()) {
+                        if (entry.getValue() instanceof ConfigurationSection innerSection) {
+                            actions.add(getAction(innerSection));
+                        }
                     }
-                }, condition.getLocation(), delay * 50L, TimeUnit.MILLISECONDS);
+                }
+            } else {
+                delay = 1;
+                async = false;
+                duration = 20;
+                period = 1;
+            }
+            return condition -> {
+                if (Math.random() > chance) return;
+                CancellableTask cancellableTask;
+                if (async) {
+                    cancellableTask = plugin.getScheduler().runTaskAsyncTimer(() -> {
+                        for (Action action : actions) {
+                            action.trigger(condition);
+                        }
+                    }, delay * 50L, period * 50L, TimeUnit.MILLISECONDS);
+                } else {
+                    cancellableTask = plugin.getScheduler().runTaskSyncTimer(() -> {
+                        for (Action action : actions) {
+                            action.trigger(condition);
+                        }
+                    }, condition.getLocation(), delay, period);
+                }
+                plugin.getScheduler().runTaskSyncLater(cancellableTask::cancel, condition.getLocation(), duration);
             };
         });
     }
@@ -741,9 +802,9 @@ public class ActionManagerImpl implements ActionManager {
                             condition.getPlayer(),
                             PlaceholderManagerImpl.getInstance().parse(condition.getPlayer(), title, condition.getArgs()),
                             PlaceholderManagerImpl.getInstance().parse(condition.getPlayer(), subtitle, condition.getArgs()),
-                            fadeIn * 50,
-                            stay * 50,
-                            fadeOut * 50
+                            fadeIn,
+                            stay,
+                            fadeOut
                     );
                 };
             } else {
@@ -770,9 +831,9 @@ public class ActionManagerImpl implements ActionManager {
                                             condition.getPlayer(),
                                             PlaceholderManagerImpl.getInstance().parse(condition.getPlayer(), title, condition.getArgs()),
                                             PlaceholderManagerImpl.getInstance().parse(condition.getPlayer(), subtitle, condition.getArgs()),
-                                            fadeIn * 50,
-                                            stay * 50,
-                                            fadeOut * 50
+                                            fadeIn,
+                                            stay,
+                                            fadeOut
                                     );
                                     condition.delArg("{near}");
                                 }
@@ -800,9 +861,9 @@ public class ActionManagerImpl implements ActionManager {
                             condition.getPlayer(),
                             PlaceholderManagerImpl.getInstance().parse(condition.getPlayer(), titles.get(ThreadLocalRandom.current().nextInt(titles.size())), condition.getArgs()),
                             PlaceholderManagerImpl.getInstance().parse(condition.getPlayer(), subtitles.get(ThreadLocalRandom.current().nextInt(subtitles.size())), condition.getArgs()),
-                            fadeIn * 50,
-                            stay * 50,
-                            fadeOut * 50
+                            fadeIn,
+                            stay,
+                            fadeOut
                     );
                 };
             } else {
