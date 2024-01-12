@@ -23,7 +23,10 @@ import net.momirealms.customfishing.api.CustomFishingPlugin;
 import net.momirealms.customfishing.api.common.Key;
 import net.momirealms.customfishing.api.common.Pair;
 import net.momirealms.customfishing.api.common.Tuple;
+import net.momirealms.customfishing.api.event.FishingBagPreCollectEvent;
+import net.momirealms.customfishing.api.event.FishingLootPreSpawnEvent;
 import net.momirealms.customfishing.api.event.FishingLootSpawnEvent;
+import net.momirealms.customfishing.api.manager.ActionManager;
 import net.momirealms.customfishing.api.manager.ItemManager;
 import net.momirealms.customfishing.api.manager.RequirementManager;
 import net.momirealms.customfishing.api.mechanic.GlobalSettings;
@@ -52,7 +55,7 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.enchantments.Enchantment;
-import org.bukkit.entity.Entity;
+import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
@@ -374,7 +377,8 @@ public class ItemManagerImpl implements ItemManager, Listener {
         if (temp.getType() == Material.AIR) {
             return temp;
         }
-        temp.setAmount(builder.getAmount());
+        int amount = builder.getAmount();
+        temp.setAmount(amount);
         NBTItem nbtItem = new NBTItem(temp);
         for (ItemBuilder.ItemPropertyEditor editor : builder.getEditors()) {
             editor.edit(player, nbtItem, placeholders);
@@ -423,49 +427,49 @@ public class ItemManagerImpl implements ItemManager, Listener {
         return itemLibraryMap.remove(identification) != null;
     }
 
-    /**
-     * Drops an item based on the provided loot, applying velocity from a hook location to a player location.
-     * This method would also trigger FishingLootSpawnEvent
-     *
-     * @param player         The player for whom the item is intended.
-     * @param hookLocation   The location where the item will initially drop.
-     * @param playerLocation The target location towards which the item's velocity is applied.
-     * @param id             The loot object representing the item to be dropped.
-     * @param args           A map of placeholders for item customization.
-     */
     @Override
-    public void dropItem(Player player, Location hookLocation, Location playerLocation, String id, Map<String, String> args) {
-        ItemStack item = build(player, "item", id, args);
-        if (item == null) {
-            LogUtils.warn(String.format("Item %s not exists", id));
-            return;
-        }
+    public void dropItem(Player player, Location hookLocation, Location playerLocation, ItemStack item, Condition condition) {
         if (item.getType() == Material.AIR) {
             return;
         }
 
-        FishingLootSpawnEvent spawnEvent = new FishingLootSpawnEvent(player, hookLocation, item);
-        Bukkit.getPluginManager().callEvent(spawnEvent);
-        if (spawnEvent.isCancelled()) {
+        if (CFConfig.enableFishingBag && plugin.getBagManager().doesBagStoreLoots() && RequirementManager.isRequirementMet(condition, plugin.getBagManager().getCollectRequirements())) {
+            var bag = plugin.getBagManager().getOnlineBagInventory(player.getUniqueId());
+
+            FishingBagPreCollectEvent preCollectEvent = new FishingBagPreCollectEvent(player, item, bag);
+            Bukkit.getPluginManager().callEvent(preCollectEvent);
+            if (preCollectEvent.isCancelled()) {
+                return;
+            }
+
+            int cannotPut = ItemUtils.putLootsToBag(bag, item, item.getAmount());
+            // some are put into bag
+            if (cannotPut != item.getAmount()) {
+                ActionManager.triggerActions(condition, plugin.getBagManager().getCollectLootActions());
+            }
+            // all are put
+            if (cannotPut == 0) {
+                return;
+            }
+            // bag is full
+            item.setAmount(cannotPut);
+            ActionManager.triggerActions(condition, plugin.getBagManager().getBagFullActions());
+        }
+
+        FishingLootPreSpawnEvent preSpawnEvent = new FishingLootPreSpawnEvent(player, hookLocation, item);
+        Bukkit.getPluginManager().callEvent(preSpawnEvent);
+        if (preSpawnEvent.isCancelled()) {
             return;
         }
 
-        Entity itemEntity = hookLocation.getWorld().dropItem(hookLocation, item);
-        Vector vector = playerLocation.subtract(hookLocation).toVector().multiply(0.105);
-        vector = vector.setY((vector.getY() + 0.22) * 1.18);
-        itemEntity.setVelocity(vector);
-    }
+        Item itemEntity = hookLocation.getWorld().dropItem(hookLocation, item);
+        FishingLootSpawnEvent spawnEvent = new FishingLootSpawnEvent(player, hookLocation, itemEntity);
+        Bukkit.getPluginManager().callEvent(spawnEvent);
+        if (spawnEvent.isCancelled()) {
+            itemEntity.remove();
+            return;
+        }
 
-    /**
-     * Drops an item entity at the specified location and applies velocity towards another location.
-     *
-     * @param hookLocation   The location where the item will initially drop.
-     * @param playerLocation The target location towards which the item's velocity is applied.
-     * @param itemStack      The item stack to be dropped as an entity.
-     */
-    @Override
-    public void dropItem(Location hookLocation, Location playerLocation, ItemStack itemStack) {
-        Entity itemEntity = hookLocation.getWorld().dropItem(hookLocation, itemStack);
         Vector vector = playerLocation.subtract(hookLocation).toVector().multiply(0.105);
         vector = vector.setY((vector.getY() + 0.22) * 1.18);
         itemEntity.setVelocity(vector);
@@ -727,19 +731,14 @@ public class ItemManagerImpl implements ItemManager, Listener {
         public ItemBuilder price(float base, float bonus) {
             if (base == 0 && bonus == 0) return this;
             editors.put("price", (player, nbtItem, placeholders) -> {
-                if (base != 0) {
-                    placeholders.put("{base}", String.format("%.2f", base));
-                    placeholders.put("{BASE}", String.valueOf(base));
-                }
-                if (bonus != 0) {
-                    placeholders.put("{bonus}", String.format("%.2f", bonus));
-                    placeholders.put("{BONUS}", String.valueOf(bonus));
-                }
-                float size = Float.parseFloat(placeholders.getOrDefault("{SIZE}", "0"));
-                double price = CustomFishingPlugin.get().getMarketManager().getFishPrice(
-                        base,
-                        bonus,
-                        size
+                placeholders.put("{base}", String.format("%.2f", base));
+                placeholders.put("{BASE}", String.valueOf(base));
+                placeholders.put("{bonus}", String.format("%.2f", bonus));
+                placeholders.put("{BONUS}", String.valueOf(bonus));
+                double price;
+                price = CustomFishingPlugin.get().getMarketManager().getFishPrice(
+                        player,
+                        placeholders
                 );
                 nbtItem.setDouble("Price", price);
                 placeholders.put("{price}", String.format("%.2f", price));
@@ -906,7 +905,8 @@ public class ItemManagerImpl implements ItemManager, Listener {
         Loot loot = plugin.getLootManager().getLoot(id);
         if (loot != null) {
             Condition condition = new Condition(event.getPlayer());
-            GlobalSettings.triggerLootActions(ActionTrigger.CONSUME, condition);
+            if (!loot.disableGlobalAction())
+                GlobalSettings.triggerLootActions(ActionTrigger.CONSUME, condition);
             loot.triggerActions(ActionTrigger.CONSUME, condition);
         }
     }
