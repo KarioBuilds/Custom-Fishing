@@ -85,6 +85,7 @@ public class ItemManagerImpl implements ItemManager, Listener {
     private final CustomFishingPlugin plugin;
     private final HashMap<Key, BuildableItem> buildableItemMap;
     private final HashMap<String, ItemLibrary> itemLibraryMap;
+    private ItemLibrary[] itemDetectionArray;
 
     public ItemManagerImpl(CustomFishingPlugin plugin) {
         instance = this;
@@ -98,6 +99,7 @@ public class ItemManagerImpl implements ItemManager, Listener {
     public void load() {
         this.loadItemsFromPluginFolder();
         Bukkit.getPluginManager().registerEvents(this, plugin);
+        this.resetItemDetectionOrder();
     }
 
     public void unload() {
@@ -109,6 +111,17 @@ public class ItemManagerImpl implements ItemManager, Listener {
                 tempMap.put(entry.getKey(), entry.getValue());
             }
         }
+    }
+
+    private void resetItemDetectionOrder() {
+        ArrayList<ItemLibrary> list = new ArrayList<>();
+        for (String plugin : CFConfig.itemDetectOrder) {
+            ItemLibrary library = itemLibraryMap.get(plugin);
+            if (library != null) {
+                list.add(library);
+            }
+        }
+        this.itemDetectionArray = list.toArray(new ItemLibrary[0]);
     }
 
     public Collection<String> getItemLibraries() {
@@ -249,13 +262,10 @@ public class ItemManagerImpl implements ItemManager, Listener {
     public String getAnyPluginItemID(ItemStack itemStack) {
         if (itemStack == null || itemStack.getType() == Material.AIR)
             return "AIR";
-        for (String plugin : CFConfig.itemDetectOrder) {
-            ItemLibrary itemLibrary = itemLibraryMap.get(plugin);
-            if (itemLibrary != null) {
-                String id = itemLibrary.getItemID(itemStack);
-                if (id != null) {
-                    return id;
-                }
+        for (ItemLibrary library : itemDetectionArray) {
+            String id = library.getItemID(itemStack);
+            if (id != null) {
+                return id;
             }
         }
         // should not reach this because vanilla library would always work
@@ -413,6 +423,7 @@ public class ItemManagerImpl implements ItemManager, Listener {
     public boolean registerItemLibrary(ItemLibrary itemLibrary) {
         if (itemLibraryMap.containsKey(itemLibrary.identification())) return false;
         itemLibraryMap.put(itemLibrary.identification(), itemLibrary);
+        this.resetItemDetectionOrder();
         return true;
     }
 
@@ -424,7 +435,10 @@ public class ItemManagerImpl implements ItemManager, Listener {
      */
     @Override
     public boolean unRegisterItemLibrary(String identification) {
-        return itemLibraryMap.remove(identification) != null;
+        boolean success = itemLibraryMap.remove(identification) != null;
+        if (success)
+            this.resetItemDetectionOrder();
+        return success;
     }
 
     @Override

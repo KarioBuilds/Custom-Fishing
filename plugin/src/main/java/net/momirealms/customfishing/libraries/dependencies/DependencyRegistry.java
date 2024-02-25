@@ -1,5 +1,5 @@
 /*
- * This file is part of helper, licensed under the MIT License.
+ * This file is part of LuckPerms, licensed under the MIT License.
  *
  *  Copyright (c) lucko (Luck) <luck@lucko.me>
  *  Copyright (c) contributors
@@ -23,21 +23,40 @@
  *  SOFTWARE.
  */
 
-package net.momirealms.customfishing.libraries.libraryloader;
+package net.momirealms.customfishing.libraries.dependencies;
 
-import org.jetbrains.annotations.NotNull;
-
-import java.lang.annotation.*;
+import com.google.gson.JsonElement;
 
 /**
- * Annotation to indicate the required libraries for a class.
+ * Applies LuckPerms specific behaviour for {@link Dependency}s.
  */
-@Documented
-@Target(ElementType.TYPE)
-@Retention(RetentionPolicy.RUNTIME)
-public @interface MavenLibraries {
+public class DependencyRegistry {
 
-    @NotNull
-    MavenLibrary[] value() default {};
+    public boolean shouldAutoLoad(Dependency dependency) {
+        return switch (dependency) {
+            // all used within 'isolated' classloaders, and are therefore not
+            // relocated.
+            case ASM, ASM_COMMONS, JAR_RELOCATOR, H2_DRIVER, SQLITE_DRIVER -> false;
+            default -> true;
+        };
+    }
+
+    @SuppressWarnings("ConstantConditions")
+    public static boolean isGsonRelocated() {
+        return JsonElement.class.getName().startsWith("net.momirealms");
+    }
+
+    private static boolean classExists(String className) {
+        try {
+            Class.forName(className);
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
+
+    private static boolean slf4jPresent() {
+        return classExists("org.slf4j.Logger") && classExists("org.slf4j.LoggerFactory");
+    }
 
 }
