@@ -17,35 +17,24 @@
 
 package net.momirealms.customfishing.compatibility.level;
 
-import com.gamingmesh.jobs.Jobs;
-import com.gamingmesh.jobs.container.Job;
-import com.gamingmesh.jobs.container.JobProgression;
-import com.gamingmesh.jobs.container.JobsPlayer;
+import dev.aurelium.auraskills.api.AuraSkillsApi;
+import dev.aurelium.auraskills.api.registry.NamespacedId;
 import net.momirealms.customfishing.api.integration.LevelInterface;
 import org.bukkit.entity.Player;
 
-import java.util.List;
-
-public class JobsRebornImpl implements LevelInterface {
+public class AuraSkillsImpl implements LevelInterface {
 
     @Override
     public void addXp(Player player, String target, double amount) {
-        JobsPlayer jobsPlayer = Jobs.getPlayerManager().getJobsPlayer(player);
-        Job job = Jobs.getJob(target);
-        if (jobsPlayer != null && jobsPlayer.isInJob(job))
-            Jobs.getPlayerManager().addExperience(jobsPlayer, job, amount);
+        AuraSkillsApi.get().getUser(player.getUniqueId())
+                .addSkillXp(AuraSkillsApi.get().getGlobalRegistry().getSkill(NamespacedId.fromDefault(target)), amount);
     }
 
     @Override
     public int getLevel(Player player, String target) {
-        JobsPlayer jobsPlayer = Jobs.getPlayerManager().getJobsPlayer(player);
-        if (jobsPlayer != null) {
-            List<JobProgression> jobs = jobsPlayer.getJobProgression();
-            Job job = Jobs.getJob(target);
-            for (JobProgression progression : jobs)
-                if (progression.getJob().equals(job))
-                    return progression.getLevel();
-        }
-        return 0;
+        return AuraSkillsApi.get().getUser(player.getUniqueId()).getSkillLevel(
+                AuraSkillsApi.get().getGlobalRegistry().getSkill(NamespacedId.fromDefault(target))
+        );
     }
 }
+
