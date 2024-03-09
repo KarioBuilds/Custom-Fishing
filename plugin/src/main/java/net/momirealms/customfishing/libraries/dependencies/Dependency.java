@@ -304,23 +304,31 @@ public enum Dependency {
     INV_UI(
             "xyz{}xenondevs{}invui",
             "invui-core",
-            "1.25",
+            "1.26",
             "xenondevs",
             "invui-core"
     ),
     INV_UI_ACCESS(
             "xyz{}xenondevs{}invui",
             "inventory-access",
-            "1.25",
+            "1.26",
             "xenondevs",
             "inventory-access"
     ),
     INV_UI_NMS(
             "xyz{}xenondevs{}invui",
             getInvUINms(),
-            "1.25",
+            "1.26",
             "xenondevs",
             getInvUINms()
+    ),
+    BIOME_API(
+            "com{}github{}Xiao-MoMi",
+            "BiomeAPI",
+            "0.2",
+            "jitpack",
+            "biome-api",
+            Relocation.of("biomeapi", "net{}momirealms{}biomeapi")
     ),
     GSON(
             "com.google.code.gson",
@@ -328,7 +336,7 @@ public enum Dependency {
             "2.10.1",
             null,
             "gson"
-    ),;
+    );
 
     private final String mavenRepoPath;
     private final String version;
