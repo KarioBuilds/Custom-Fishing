@@ -19,9 +19,7 @@ package net.momirealms.customfishing.api.mechanic.misc;
 
 import org.bukkit.entity.Player;
 
-import java.util.Map;
+public interface WeightModifier {
 
-public interface Value {
-
-    double get(Player player, Map<String, String> values);
+    double modify(Player player, double weight);
 }

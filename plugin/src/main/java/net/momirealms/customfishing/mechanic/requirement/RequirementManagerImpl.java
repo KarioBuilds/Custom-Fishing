@@ -59,14 +59,14 @@ public class RequirementManagerImpl implements RequirementManager {
 
     public static Requirement[] mechanicRequirements;
     private final CustomFishingPluginImpl plugin;
-    private final HashMap<String, RequirementFactory> requirementBuilderMap;
+    private final HashMap<String, RequirementFactory> requirementFactoryMap;
     private final LinkedHashMap<String, ConditionalElement> conditionalLootsMap;
     private final LinkedHashMap<String, ConditionalElement> conditionalGamesMap;
     private final String EXPANSION_FOLDER = "expansions/requirement";
 
     public RequirementManagerImpl(CustomFishingPluginImpl plugin) {
         this.plugin = plugin;
-        this.requirementBuilderMap = new HashMap<>();
+        this.requirementFactoryMap = new HashMap<>();
         this.conditionalLootsMap = new LinkedHashMap<>();
         this.conditionalGamesMap = new LinkedHashMap<>();
         this.registerInbuiltRequirements();
@@ -82,7 +82,7 @@ public class RequirementManagerImpl implements RequirementManager {
     }
 
     public void disable() {
-        this.requirementBuilderMap.clear();
+        this.requirementFactoryMap.clear();
         this.conditionalLootsMap.clear();
     }
 
@@ -130,8 +130,8 @@ public class RequirementManagerImpl implements RequirementManager {
      */
     @Override
     public boolean registerRequirement(String type, RequirementFactory requirementFactory) {
-        if (this.requirementBuilderMap.containsKey(type)) return false;
-        this.requirementBuilderMap.put(type, requirementFactory);
+        if (this.requirementFactoryMap.containsKey(type)) return false;
+        this.requirementFactoryMap.put(type, requirementFactory);
         return true;
     }
 
@@ -143,7 +143,7 @@ public class RequirementManagerImpl implements RequirementManager {
      */
     @Override
     public boolean unregisterRequirement(String type) {
-        return this.requirementBuilderMap.remove(type) != null;
+        return this.requirementFactoryMap.remove(type) != null;
     }
 
     /**
@@ -282,7 +282,7 @@ public class RequirementManagerImpl implements RequirementManager {
 
     @Override
     public boolean hasRequirement(String type) {
-        return requirementBuilderMap.containsKey(type);
+        return requirementFactoryMap.containsKey(type);
     }
 
     /**
@@ -350,7 +350,7 @@ public class RequirementManagerImpl implements RequirementManager {
     @Override
     @Nullable
     public RequirementFactory getRequirementFactory(String type) {
-        return requirementBuilderMap.get(type);
+        return requirementFactoryMap.get(type);
     }
 
     private void registerTimeRequirement() {
@@ -367,10 +367,9 @@ public class RequirementManagerImpl implements RequirementManager {
         });
     }
 
-    @SuppressWarnings("all")
     private void registerGroupRequirement() {
         registerRequirement("group", (args, actions, advanced) -> {
-            List<String> arg = (List<String>) args;
+            HashSet<String> arg = new HashSet<>(ConfigUtils.stringListArgs(args));
             return condition -> {
                 String lootID = condition.getArg("{loot}");
                 Loot loot = plugin.getLootManager().getLoot(lootID);
@@ -387,7 +386,7 @@ public class RequirementManagerImpl implements RequirementManager {
             };
         });
         registerRequirement("!group", (args, actions, advanced) -> {
-            List<String> arg = (List<String>) args;
+            HashSet<String> arg = new HashSet<>(ConfigUtils.stringListArgs(args));
             return condition -> {
                 String lootID = condition.getArg("{loot}");
                 Loot loot = plugin.getLootManager().getLoot(lootID);
@@ -409,10 +408,9 @@ public class RequirementManagerImpl implements RequirementManager {
         });
     }
 
-    @SuppressWarnings("unchecked")
     private void registerLootRequirement() {
         registerRequirement("loot", (args, actions, advanced) -> {
-            List<String> arg = (List<String>) args;
+            HashSet<String> arg = new HashSet<>(ConfigUtils.stringListArgs(args));
             return condition -> {
                 String lootID = condition.getArg("{loot}");
                 if (arg.contains(lootID)) return true;
@@ -421,7 +419,7 @@ public class RequirementManagerImpl implements RequirementManager {
             };
         });
         registerRequirement("!loot", (args, actions, advanced) -> {
-            List<String> arg = (List<String>) args;
+            HashSet<String> arg = new HashSet<>(ConfigUtils.stringListArgs(args));
             return condition -> {
                 String lootID = condition.getArg("{loot}");
                 if (!arg.contains(lootID)) return true;
