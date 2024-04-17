@@ -9,7 +9,7 @@ dependencies {
     compileOnly("dev.jorel:commandapi-bukkit-core:9.3.0")
 
     // nbt
-    compileOnly("de.tr7zw:item-nbt-api:2.12.2")
+    compileOnly("de.tr7zw:item-nbt-api:2.12.3")
 
     // bStats
     compileOnly("org.bstats:bstats-bukkit:3.0.2")
@@ -51,8 +51,8 @@ dependencies {
     compileOnly("dev.aurelium:auraskills-api-bukkit:2.0.0-SNAPSHOT")
     compileOnly("com.github.MilkBowl:VaultAPI:1.7")
     compileOnly("org.betonquest:betonquest:2.0.0")
-    compileOnly("xyz.xenondevs.invui:invui:1.26")
-    compileOnly("com.github.Xiao-MoMi:Custom-Crops:3.4-BETA-1")
+    compileOnly("xyz.xenondevs.invui:invui:1.27")
+    compileOnly("com.github.Xiao-MoMi:Custom-Crops:3.4.4.1")
     implementation("com.github.Xiao-MoMi:BiomeAPI:0.3")
 
     // local jars

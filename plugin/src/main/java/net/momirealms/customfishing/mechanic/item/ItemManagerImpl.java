@@ -78,6 +78,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.File;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 public class ItemManagerImpl implements ItemManager, Listener {
 
@@ -86,12 +87,14 @@ public class ItemManagerImpl implements ItemManager, Listener {
     private final HashMap<Key, BuildableItem> buildableItemMap;
     private final HashMap<String, ItemLibrary> itemLibraryMap;
     private ItemLibrary[] itemDetectionArray;
+    private NamespacedKey blockKey;
 
     public ItemManagerImpl(CustomFishingPlugin plugin) {
         instance = this;
         this.plugin = plugin;
         this.itemLibraryMap = new LinkedHashMap<>();
         this.buildableItemMap = new HashMap<>();
+        this.blockKey = NamespacedKey.fromString("block", plugin);
         this.registerItemLibrary(new CustomFishingItemImpl());
         this.registerItemLibrary(new VanillaItemImpl());
     }
@@ -483,6 +486,13 @@ public class ItemManagerImpl implements ItemManager, Listener {
             itemEntity.remove();
             return;
         }
+
+        itemEntity.setInvulnerable(true);
+        plugin.getScheduler().runTaskAsyncLater(() -> {
+            if (itemEntity.isValid()) {
+                itemEntity.setInvulnerable(false);
+            }
+        }, 1, TimeUnit.SECONDS);
 
         Vector vector = playerLocation.subtract(hookLocation).toVector().multiply(0.105);
         vector = vector.setY((vector.getY() + 0.22) * 1.18);
@@ -878,9 +888,8 @@ public class ItemManagerImpl implements ItemManager, Listener {
      *
      * @param event The PlayerAttemptPickupItemEvent.
      */
-    @EventHandler
+    @EventHandler (ignoreCancelled = true)
     public void onPickUp(PlayerAttemptPickupItemEvent event) {
-        if (event.isCancelled()) return;
         ItemStack itemStack = event.getItem().getItemStack();
         NBTItem nbtItem = new NBTItem(itemStack);
         if (!nbtItem.hasTag("owner")) return;
@@ -897,9 +906,8 @@ public class ItemManagerImpl implements ItemManager, Listener {
      *
      * @param event The InventoryPickupItemEvent.
      */
-    @EventHandler
-    public void onMove(InventoryPickupItemEvent event) {
-        if (event.isCancelled()) return;
+    @EventHandler (ignoreCancelled = true)
+    public void onInvPickItem(InventoryPickupItemEvent event) {
         ItemStack itemStack = event.getItem().getItemStack();
         NBTItem nbtItem = new NBTItem(itemStack);
         if (!nbtItem.hasTag("owner")) return;
@@ -912,9 +920,8 @@ public class ItemManagerImpl implements ItemManager, Listener {
      *
      * @param event The PlayerItemConsumeEvent.
      */
-    @EventHandler
+    @EventHandler (ignoreCancelled = true)
     public void onConsumeItem(PlayerItemConsumeEvent event) {
-        if (event.isCancelled()) return;
         ItemStack itemStack = event.getItem();
         String id = getAnyPluginItemID(itemStack);
         Loot loot = plugin.getLootManager().getLoot(id);
@@ -931,7 +938,7 @@ public class ItemManagerImpl implements ItemManager, Listener {
      *
      * @param event The PrepareAnvilEvent.
      */
-    @EventHandler
+    @EventHandler (ignoreCancelled = true)
     public void onRepairItem(PrepareAnvilEvent event) {
         ItemStack result = event.getInventory().getResult();
         if (result == null || result.getType() == Material.AIR) return;
@@ -951,9 +958,8 @@ public class ItemManagerImpl implements ItemManager, Listener {
      *
      * @param event The PlayerItemMendEvent.
      */
-    @EventHandler
+    @EventHandler (ignoreCancelled = true)
     public void onMending(PlayerItemMendEvent event) {
-        if (event.isCancelled()) return;
         ItemStack itemStack = event.getItem();
         NBTItem nbtItem = new NBTItem(itemStack);
         NBTCompound compound = nbtItem.getCompound("CustomFishing");
@@ -968,7 +974,7 @@ public class ItemManagerImpl implements ItemManager, Listener {
      * @param event The PlayerInteractEvent.
      */
     @EventHandler
-    public void onInteractWithUtils(PlayerInteractEvent event) {
+    public void onInteractWithItems(PlayerInteractEvent event) {
         if (event.useItemInHand() == Event.Result.DENY)
             return;
         if (event.getHand() != EquipmentSlot.HAND)
@@ -979,16 +985,25 @@ public class ItemManagerImpl implements ItemManager, Listener {
         if (event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_AIR && event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK)
             return;
         String id = getAnyPluginItemID(itemStack);
-        EffectCarrier carrier = plugin.getEffectManager().getEffectCarrier("util", id);
-        if (carrier == null)
-            return;
         Condition condition = new Condition(event.getPlayer());
-        if (!RequirementManager.isRequirementMet(condition, carrier.getRequirements()))
+
+        Loot loot = plugin.getLootManager().getLoot(id);
+        if (loot != null) {
+            loot.triggerActions(ActionTrigger.INTERACT, condition);
             return;
-        Action[] actions = carrier.getActions(ActionTrigger.INTERACT);
-        if (actions != null)
-            for (Action action : actions) {
-                action.trigger(condition);
+        }
+
+        // because the id can be from other plugins, so we can't infer the type of the item
+        for (String type : List.of("util", "bait", "hook")) {
+            EffectCarrier carrier = plugin.getEffectManager().getEffectCarrier(type, id);
+            if (carrier != null) {
+                Action[] actions = carrier.getActions(ActionTrigger.INTERACT);
+                if (actions != null)
+                    for (Action action : actions) {
+                        action.trigger(condition);
+                    }
+                break;
             }
+        }
     }
 }

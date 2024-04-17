@@ -184,7 +184,7 @@ public enum Dependency {
     NBT_API(
             "de{}tr7zw",
             "item-nbt-api",
-            "2.12.2",
+            "2.12.3",
             "codemc",
             "item-nbt-api",
             Relocation.of("changeme", "de{}tr7zw{}changeme")
@@ -304,21 +304,21 @@ public enum Dependency {
     INV_UI(
             "xyz{}xenondevs{}invui",
             "invui-core",
-            "1.26",
+            "1.27",
             "xenondevs",
             "invui-core"
     ),
     INV_UI_ACCESS(
             "xyz{}xenondevs{}invui",
             "inventory-access",
-            "1.26",
+            "1.27",
             "xenondevs",
             "inventory-access"
     ),
     INV_UI_NMS(
             "xyz{}xenondevs{}invui",
             getInvUINms(),
-            "1.26",
+            "1.27",
             "xenondevs",
             getInvUINms()
     ),
