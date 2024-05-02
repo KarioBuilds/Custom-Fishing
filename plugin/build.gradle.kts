@@ -18,7 +18,7 @@ dependencies {
     compileOnly("me.clip:placeholderapi:2.11.5")
 
     // config
-    compileOnly("dev.dejvokep:boosted-yaml:1.3.2")
+    compileOnly("dev.dejvokep:boosted-yaml:1.3.4")
 
     // mythic
     compileOnly("io.lumine:Mythic-Dist:5.3.5")
@@ -53,7 +53,7 @@ dependencies {
     compileOnly("org.betonquest:betonquest:2.0.0")
     compileOnly("xyz.xenondevs.invui:invui:1.27")
     compileOnly("com.github.Xiao-MoMi:Custom-Crops:3.4.4.1")
-    implementation("com.github.Xiao-MoMi:BiomeAPI:0.3")
+    compileOnly("com.github.Xiao-MoMi:BiomeAPI:0.3")
 
     // local jars
     compileOnly(files("libs/AdvancedEnchantments-api.jar"))
@@ -70,8 +70,7 @@ dependencies {
     }
 
     // adventure
-    implementation("net.kyori:adventure-api:4.16.0")
-    implementation("net.kyori:adventure-platform-bukkit:4.3.2")
+    compileOnly("net.kyori:adventure-api:4.16.0")
 }
 
 tasks {
@@ -90,5 +89,6 @@ tasks {
         relocate ("dev.dejvokep.boostedyaml", "net.momirealms.customfishing.libraries.boostedyaml")
         relocate ("org.bstats", "net.momirealms.customfishing.libraries.bstats")
         relocate ("net.momirealms.biomeapi", "net.momirealms.customfishing.libraries.biomeapi")
+        relocate ("xyz.xenondevs", "net.momirealms.customfishing.libraries")
     }
 }
