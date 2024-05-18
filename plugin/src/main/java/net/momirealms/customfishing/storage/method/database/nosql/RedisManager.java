@@ -23,8 +23,6 @@ import net.momirealms.customfishing.api.data.StorageType;
 import net.momirealms.customfishing.api.util.LogUtils;
 import net.momirealms.customfishing.setting.CFConfig;
 import net.momirealms.customfishing.storage.method.AbstractStorage;
-import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.jetbrains.annotations.NotNull;
@@ -199,7 +197,7 @@ public class RedisManager extends AbstractStorage {
             return;
         }
         String action = split[1];
-        CustomFishingPlugin.get().getScheduler().runTaskSync(() -> {
+        CustomFishingPlugin.get().getScheduler().runTaskAsync(() -> {
             switch (action) {
                 case "start" -> {
                     // start competition for all the servers that connected to redis
@@ -214,7 +212,7 @@ public class RedisManager extends AbstractStorage {
                         CustomFishingPlugin.get().getCompetitionManager().getOnGoingCompetition().stop(true);
                 }
             }
-        }, new Location(Bukkit.getWorlds().get(0),0,0,0));
+        });
     }
 
     @Override

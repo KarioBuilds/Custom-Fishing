@@ -28,6 +28,7 @@ package net.momirealms.customfishing.libraries.dependencies;
 import com.google.common.collect.ImmutableSet;
 import net.momirealms.customfishing.CustomFishingPluginImpl;
 import net.momirealms.customfishing.api.CustomFishingPlugin;
+import net.momirealms.customfishing.api.util.LogUtils;
 import net.momirealms.customfishing.libraries.classpath.ClassPathAppender;
 import net.momirealms.customfishing.libraries.dependencies.classloader.IsolatedClassLoader;
 import net.momirealms.customfishing.libraries.dependencies.relocation.Relocation;
@@ -65,13 +66,7 @@ public class DependencyManagerImpl implements DependencyManager {
         this.registry = new DependencyRegistry();
         this.cacheDirectory = setupCacheDirectory(plugin);
         this.classPathAppender = classPathAppender;
-    }
-
-    private synchronized RelocationHandler getRelocationHandler() {
-        if (this.relocationHandler == null) {
-            this.relocationHandler = new RelocationHandler(this);
-        }
-        return this.relocationHandler;
+        this.relocationHandler = new RelocationHandler(this);
     }
 
     @Override
@@ -157,29 +152,17 @@ public class DependencyManagerImpl implements DependencyManager {
 
         DependencyDownloadException lastError = null;
 
-        String forceRepo = dependency.getRepo();
-        if (forceRepo == null) {
-            // attempt to download the dependency from each repo in order.
-            for (DependencyRepository repo : DependencyRepository.values()) {
-                if (repo.getId().equals("maven") && TimeZone.getDefault().getID().startsWith("Asia")) {
-                    continue;
-                }
-                try {
-                    repo.download(dependency, file);
-                    return file;
-                } catch (DependencyDownloadException e) {
-                    lastError = e;
-                }
-            }
-        } else {
-            DependencyRepository repository = DependencyRepository.getByID(forceRepo);
-            if (repository != null) {
-                try {
-                    repository.download(dependency, file);
-                    return file;
-                } catch (DependencyDownloadException e) {
-                    lastError = e;
-                }
+        String fileName = dependency.getFileName(null);
+
+        // attempt to download the dependency from each repo in order.
+        for (DependencyRepository repo : DependencyRepository.values()) {
+            try {
+                LogUtils.info("Downloading dependency(" + fileName + ") from " + repo.getUrl() + dependency.getMavenRepoPath());
+                repo.download(dependency, file);
+                LogUtils.info("Successfully downloaded " + fileName);
+                return file;
+            } catch (DependencyDownloadException e) {
+                lastError = e;
             }
         }
         throw Objects.requireNonNull(lastError);
@@ -198,7 +181,9 @@ public class DependencyManagerImpl implements DependencyManager {
             return remappedFile;
         }
 
-        getRelocationHandler().remap(normalFile, remappedFile, rules);
+        LogUtils.info("Remapping " + dependency.getFileName(null));
+        relocationHandler.remap(normalFile, remappedFile, rules);
+        LogUtils.info("Successfully remapped " + dependency.getFileName(null));
         return remappedFile;
     }
 
